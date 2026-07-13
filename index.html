@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BlogMaker - 워드프레스 블로그 작성 도우미</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="workspace">
+        <aside class="sidebar" aria-label="블로그 작성 메뉴">
+          <div class="brand">
+            <span class="brand-mark">B</span>
+            <div>
+              <h1>BlogMaker</h1>
+              <p>WordPress Markdown Writer</p>
+            </div>
+          </div>
+
+          <nav id="toolList" class="tool-list" aria-label="작성 메뉴 선택"></nav>
+        </aside>
+
+        <section class="editor">
+          <header class="editor-header">
+            <div>
+              <p id="editorEyebrow" class="eyebrow">Java Blog Assistant</p>
+              <h2 id="editorTitle">자바 공부</h2>
+            </div>
+            <div class="header-actions">
+              <button id="sampleButton" class="secondary-button" type="button">예시 입력</button>
+              <button id="generateButton" class="primary-button" type="button">글 생성</button>
+              <span id="generationStatus" class="generation-status" aria-live="polite"></span>
+            </div>
+          </header>
+
+          <section id="topicPanel" class="topic-panel" hidden>
+            <div class="topic-panel-header">
+              <div>
+                <p class="eyebrow">Trending Topics</p>
+                <h3 id="topicPanelTitle">최근 이슈 주제</h3>
+              </div>
+              <button id="refreshTopicsButton" class="secondary-button" type="button">주제 새로고침</button>
+            </div>
+            <p id="topicStatus" class="topic-status" aria-live="polite"></p>
+            <div id="topicSuggestions" class="topic-suggestions"></div>
+          </section>
+
+          <div class="input-grid">
+            <section class="panel">
+              <div class="panel-header">
+                <h3 id="sourcePanelTitle">원본 입력</h3>
+                <p id="sourcePanelHint">[문제], [데이터], [요구사항], [소스] 형식으로 붙여 넣으세요.</p>
+                <button id="clearSourceButton" class="small-button" type="button">지우기</button>
+              </div>
+              <textarea
+                id="sourceInput"
+                spellcheck="false"
+                aria-label="블로그 글 생성을 위한 입력"
+                placeholder="Java 실습 문제, 데이터, 요구사항, 소스 코드를 입력하세요."
+              ></textarea>
+            </section>
+
+            <section class="panel settings-panel">
+              <div class="panel-header">
+                <h3>작성 설정</h3>
+                <p>작성 엔진, 모델, 핵심 키워드, 글 톤을 조정합니다.</p>
+              </div>
+
+              <label class="field">
+                <span>작성 엔진</span>
+                <select id="providerSelect">
+                  <option value="template">로컬 템플릿</option>
+                  <option value="openai" selected>OpenAI</option>
+                  <option value="ollama">Ollama</option>
+                </select>
+              </label>
+
+              <label class="field ai-field" data-provider-field="openai">
+                <span>OpenAI 모델</span>
+                <select id="openaiModelInput">
+                  <option value="gpt-5.5">gpt-5.5</option>
+                  <option value="gpt-5.4">gpt-5.4</option>
+                  <option value="gpt-5.4-mini" selected>gpt-5.4-mini</option>
+                  <option value="gpt-5.4-nano">gpt-5.4-nano</option>
+                  <option value="gpt-5.6">gpt-5.6 (preview)</option>
+                  <option value="gpt-4.1">gpt-4.1</option>
+                  <option value="gpt-4.1-mini">gpt-4.1-mini</option>
+                  <option value="gpt-4.1-nano">gpt-4.1-nano</option>
+                  <option value="gpt-4o">gpt-4o</option>
+                  <option value="gpt-4o-mini">gpt-4o-mini</option>
+                  <option value="o4-mini">o4-mini</option>
+                  <option value="o3">o3</option>
+                  <option value="o3-mini">o3-mini</option>
+                </select>
+              </label>
+
+              <label class="field ai-field" data-provider-field="ollama">
+                <span>Ollama 모델</span>
+                <select id="ollamaModelInput">
+                  <option value="qwen3.6:35b-a3b">qwen3.6:35b-a3b</option>
+                  <option value="qwen3.6:latest">qwen3.6:latest</option>
+                  <option value="qwen3.6:35b">qwen3.6:35b</option>
+                  <option value="exaone3.5:32B">exaone3.5:32B</option>
+                  <option value="gemma4:26b-a4b-it-q4_K_M">gemma4:26b-a4b-it-q4_K_M</option>
+                  <option value="qwen3:32B">qwen3:32B</option>
+                  <option value="gemma4:latest">gemma4:latest</option>
+                  <option value="qwen3.5:latest">qwen3.5:latest</option>
+                  <option value="gpt-oss:latest">gpt-oss:latest</option>
+                  <option value="llama3.2-vision:11b">llama3.2-vision:11b</option>
+                  <option value="timHan/llama3.2korean3B4QKM:latest">timHan/llama3.2korean3B4QKM:latest</option>
+                  <option value="exaone3.5:latest">exaone3.5:latest</option>
+                  <option value="exaone3.5:2.4b">exaone3.5:2.4b</option>
+                  <option value="qwen3.6:35b-a3b-q8_0">qwen3.6:35b-a3b-q8_0</option>
+                  <option value="2002bona/bge-m3-korean:latest">2002bona/bge-m3-korean:latest</option>
+                  <option value="bge-m3:latest">bge-m3:latest</option>
+                  <option value="mxbai-embed-large:latest">mxbai-embed-large:latest</option>
+                  <option value="nomic-embed-text:latest">nomic-embed-text:latest</option>
+                </select>
+              </label>
+
+              <label class="field">
+                <span>핵심 키워드</span>
+                <input id="keywordInput" type="text" placeholder="입력 내용 또는 선택 주제를 기준으로 자동 채워집니다." />
+              </label>
+
+              <label class="field">
+                <span>글 톤</span>
+                <select id="toneSelect"></select>
+              </label>
+
+              <label class="check-field">
+                <input id="fixCodeCheck" type="checkbox" checked />
+                <span>코드 가독성 정리 안내 포함</span>
+              </label>
+
+              <label class="check-field">
+                <input id="seoAutoRefineCheck" type="checkbox" checked />
+                <span>SEO 자동 평가 및 재수정</span>
+              </label>
+            </section>
+          </div>
+        </section>
+      </section>
+
+      <section class="output-area">
+        <div class="output-toolbar">
+          <div>
+            <p class="eyebrow">Generated Package</p>
+            <h2>글, 이미지, 메타데이터</h2>
+          </div>
+          <div class="toolbar-actions">
+            <button id="generateCoverButton" class="secondary-button" type="button">대표 이미지 생성</button>
+            <button id="downloadCoverButton" class="secondary-button" type="button" disabled>대표 PNG</button>
+            <button id="generateWpImagesButton" class="secondary-button" type="button">WP 이미지 3종 생성</button>
+            <button id="downloadWpImagesButton" class="secondary-button" type="button" disabled>WP 이미지 모두 다운로드</button>
+            <button id="copyWpMetadataButton" class="secondary-button" type="button" disabled>메타 전체 복사</button>
+            <button id="copyButton" class="secondary-button" type="button">Markdown 복사</button>
+            <button id="downloadButton" class="secondary-button" type="button">.md 다운로드</button>
+          </div>
+        </div>
+
+        <div id="seoReport" class="seo-report" aria-live="polite"></div>
+
+        <div class="output-grid">
+          <section class="markdown-panel" aria-label="생성된 Markdown">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Markdown</p>
+                <h3>생성된 글</h3>
+              </div>
+            </div>
+            <textarea id="markdownOutput" spellcheck="false" aria-label="생성된 워드프레스용 Markdown"></textarea>
+          </section>
+
+          <section class="media-panel" aria-label="생성된 이미지와 메타데이터">
+            <section class="cover-panel" aria-label="대표 이미지 미리보기">
+              <div class="cover-panel-header">
+                <div>
+                  <p class="eyebrow">Featured Image</p>
+                  <h3>대표 이미지</h3>
+                </div>
+                <div class="cover-controls">
+                  <label class="cover-check">
+                    <input id="autoCoverCheck" type="checkbox" checked />
+                    <span>글 생성 후 자동 생성</span>
+                  </label>
+                  <select id="coverSourceSelect" aria-label="대표 이미지 배경 생성 방식">
+                    <option value="local">무료 로컬 템플릿</option>
+                    <option value="ollama">Ollama 이미지 모델</option>
+                  </select>
+                </div>
+              </div>
+              <canvas id="coverCanvas" width="1200" height="630" aria-label="대표 이미지 미리보기"></canvas>
+              <p id="coverStatus" class="cover-status" aria-live="polite"></p>
+            </section>
+
+            <section class="wp-images-panel" aria-label="워드프레스 이미지 생성 결과">
+              <div class="cover-panel-header">
+                <div>
+                  <p class="eyebrow">WordPress Images</p>
+                  <h3>이미지 3종 및 메타데이터</h3>
+                </div>
+                <div class="cover-controls">
+                  <label class="cover-check">
+                    <input id="autoWpImagesCheck" type="checkbox" checked />
+                    <span>글 생성 후 자동 생성</span>
+                  </label>
+                </div>
+              </div>
+              <p id="wpImageStatus" class="cover-status" aria-live="polite"></p>
+              <div id="wpImageResults" class="wp-image-results"></div>
+            </section>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
