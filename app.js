@@ -790,8 +790,41 @@ function downloadCoverImage() {
   showToast("대표이미지 PNG 다운로드를 시작했습니다.");
 }
 
-function setWpImageStatus(message) {
-  if (wpImageStatus) wpImageStatus.textContent = message || "";
+function setWpImageStatus(message, type = "") {
+  if (!wpImageStatus) return;
+
+  wpImageStatus.textContent = message || "";
+  wpImageStatus.classList.toggle("is-error", type === "error" && Boolean(message));
+}
+
+function normalizeWpImageError(error) {
+  const rawMessage = String(error?.message || error || "").trim();
+  let message = rawMessage;
+
+  try {
+    const parsed = JSON.parse(rawMessage);
+    message = parsed?.error?.message || parsed?.message || rawMessage;
+  } catch {
+    const jsonMatch = rawMessage.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      try {
+        const parsed = JSON.parse(jsonMatch[0]);
+        message = parsed?.error?.message || parsed?.message || rawMessage;
+      } catch {
+        message = rawMessage;
+      }
+    }
+  }
+
+  if (/API_KEY_INVALID|API key not valid|INVALID_ARGUMENT/i.test(`${rawMessage} ${message}`)) {
+    return "Gemini API 키가 유효하지 않습니다. .env의 GEMINI_API_KEY 또는 API_KEY 값을 새 키로 교체한 뒤 서버를 다시 시작해 주세요.";
+  }
+
+  if (/GEMINI_API_KEY|API_KEY/i.test(message) && /설정|not set|missing/i.test(message)) {
+    return "Gemini API 키가 설정되어 있지 않습니다. .env 파일에 GEMINI_API_KEY=발급받은_키 형식으로 추가해 주세요.";
+  }
+
+  return message || "WordPress 이미지 생성 중 오류가 발생했습니다.";
 }
 
 function getWpImageTypeLabel(type) {
@@ -945,8 +978,9 @@ async function generateWordPressImages() {
     setWpImageStatus(`WordPress 이미지 ${processed.length}개를 생성했습니다.`);
     showToast("WordPress 이미지와 메타데이터를 생성했습니다.");
   } catch (error) {
-    setWpImageStatus(error.message || "WordPress 이미지 생성 중 오류가 발생했습니다.");
-    showToast(error.message || "WordPress 이미지 생성 중 오류가 발생했습니다.");
+    const friendlyError = normalizeWpImageError(error);
+    setWpImageStatus(friendlyError, "error");
+    showToast(friendlyError);
   } finally {
     generateWpImagesButton.disabled = false;
   }

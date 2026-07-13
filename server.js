@@ -356,44 +356,82 @@ async function handleWordPressImages(req, res) {
   const ai = new GoogleGenAI({ apiKey });
   const promptModel = String(body.promptModel || process.env.GEMINI_PROMPT_MODEL || "gemini-2.5-flash-lite").trim();
   const imageModel = String(body.imageModel || process.env.GEMINI_IMAGE_MODEL || "imagen-4.0-fast-generate-001").trim();
-  const metadata = await generateWordPressImageMetadata(ai, Type, promptModel, title, content);
-  const specs = [
-    { type: "featured", aspectRatio: "16:9", width: 1200, height: 630, overlayTitle: title },
-    { type: "content", aspectRatio: "16:9", width: 1024, height: null, overlayTitle: "" },
-    { type: "contentSecondary", aspectRatio: "16:9", width: 1024, height: null, overlayTitle: "" },
-  ];
-  const images = [];
 
-  for (const spec of specs) {
-    const itemMetadata = normalizeImageMetadata(metadata[spec.type], title, spec.type);
-    const imageResponse = await ai.models.generateImages({
-      model: imageModel,
-      prompt: buildWordPressImagePrompt(itemMetadata.prompt, spec.type),
-      config: {
-        numberOfImages: 1,
-        aspectRatio: spec.aspectRatio,
-        outputMimeType: "image/png",
-      },
-    });
-    const firstImage = imageResponse.generatedImages?.[0]?.image;
-    const base64Data = firstImage?.imageBytes || "";
-    const mimeType = firstImage?.mimeType || "image/png";
+  try {
+    const metadata = await generateWordPressImageMetadata(ai, Type, promptModel, title, content);
+    const specs = [
+      { type: "featured", aspectRatio: "16:9", width: 1200, height: 630, overlayTitle: title },
+      { type: "content", aspectRatio: "16:9", width: 1024, height: null, overlayTitle: "" },
+      { type: "contentSecondary", aspectRatio: "16:9", width: 1024, height: null, overlayTitle: "" },
+    ];
+    const images = [];
 
-    if (!base64Data) {
-      throw new Error(`${getWordPressImageTypeLabel(spec.type)} 생성 결과에서 이미지 데이터를 찾지 못했습니다.`);
+    for (const spec of specs) {
+      const itemMetadata = normalizeImageMetadata(metadata[spec.type], title, spec.type);
+      const imageResponse = await ai.models.generateImages({
+        model: imageModel,
+        prompt: buildWordPressImagePrompt(itemMetadata.prompt, spec.type),
+        config: {
+          numberOfImages: 1,
+          aspectRatio: spec.aspectRatio,
+          outputMimeType: "image/png",
+        },
+      });
+      const firstImage = imageResponse.generatedImages?.[0]?.image;
+      const base64Data = firstImage?.imageBytes || "";
+      const mimeType = firstImage?.mimeType || "image/png";
+
+      if (!base64Data) {
+        throw new Error(`${getWordPressImageTypeLabel(spec.type)} 생성 결과에서 이미지 데이터를 찾지 못했습니다.`);
+      }
+
+      images.push({
+        type: spec.type,
+        imageDataUrl: `data:${mimeType};base64,${base64Data}`,
+        metadata: itemMetadata,
+        targetWidth: spec.width,
+        targetHeight: spec.height,
+        overlayTitle: spec.overlayTitle,
+      });
     }
 
-    images.push({
-      type: spec.type,
-      imageDataUrl: `data:${mimeType};base64,${base64Data}`,
-      metadata: itemMetadata,
-      targetWidth: spec.width,
-      targetHeight: spec.height,
-      overlayTitle: spec.overlayTitle,
-    });
+    sendJson(res, 200, { promptModel, imageModel, images });
+  } catch (error) {
+    const normalized = normalizeGoogleApiError(error);
+    sendJson(res, normalized.statusCode, { error: normalized.message });
+  }
+}
+
+function normalizeGoogleApiError(error) {
+  const rawMessage = String(error?.message || error || "").trim();
+  let message = rawMessage;
+
+  try {
+    const parsed = JSON.parse(rawMessage);
+    message = parsed?.error?.message || parsed?.message || rawMessage;
+  } catch {
+    const jsonMatch = rawMessage.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      try {
+        const parsed = JSON.parse(jsonMatch[0]);
+        message = parsed?.error?.message || parsed?.message || rawMessage;
+      } catch {
+        message = rawMessage;
+      }
+    }
   }
 
-  sendJson(res, 200, { promptModel, imageModel, images });
+  if (/API_KEY_INVALID|API key not valid|INVALID_ARGUMENT/i.test(`${rawMessage} ${message}`)) {
+    return {
+      statusCode: 400,
+      message: "Gemini API 키가 유효하지 않습니다. .env의 GEMINI_API_KEY 또는 API_KEY 값을 새 키로 교체한 뒤 서버를 다시 시작해 주세요.",
+    };
+  }
+
+  return {
+    statusCode: 502,
+    message: message || "Gemini 이미지 생성 요청 처리 중 오류가 발생했습니다.",
+  };
 }
 
 async function loadGoogleGenAI() {
