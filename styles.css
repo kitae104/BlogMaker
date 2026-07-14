@@ -311,6 +311,39 @@ button:disabled {
   line-height: 1.45;
 }
 
+.topic-search-form {
+  display: grid;
+  gap: 8px;
+}
+
+.topic-search-form label {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.topic-search-form div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.topic-search-form input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--ink);
+  font: inherit;
+}
+
+.topic-search-form input:focus {
+  border-color: rgba(31, 111, 95, 0.55);
+  box-shadow: 0 0 0 3px rgba(31, 111, 95, 0.1);
+  outline: none;
+}
+
 .topic-suggestions {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -861,6 +894,10 @@ textarea {
   }
 
   .topic-suggestions {
+    grid-template-columns: 1fr;
+  }
+
+  .topic-search-form div {
     grid-template-columns: 1fr;
   }
 

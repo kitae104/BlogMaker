@@ -174,6 +174,8 @@ const topicPanelTitle = document.querySelector("#topicPanelTitle");
 const topicStatus = document.querySelector("#topicStatus");
 const topicSuggestions = document.querySelector("#topicSuggestions");
 const refreshTopicsButton = document.querySelector("#refreshTopicsButton");
+const topicSearchForm = document.querySelector("#topicSearchForm");
+const topicSearchInput = document.querySelector("#topicSearchInput");
 const providerSelect = document.querySelector("#providerSelect");
 const openaiModelInput = document.querySelector("#openaiModelInput");
 const ollamaModelInput = document.querySelector("#ollamaModelInput");
@@ -210,6 +212,8 @@ let coverImageReady = false;
 let wpImageResultsData = [];
 let currentMenuId = "java";
 let selectedTopic = null;
+let activeTopicCacheKey = "";
+let activeTopicQuery = "";
 const topicCache = new Map();
 
 function normalizeLineBreaks(value) {
@@ -275,6 +279,7 @@ function applyMenu(menuId, { reset = true } = {}) {
     clearOutputArea();
     keywordInput.value = "";
     lastAutoKeywords = "";
+    if (topicSearchInput) topicSearchInput.value = "";
   }
 
   if (!isJavaMode()) {
@@ -300,34 +305,48 @@ function setTopicStatus(message) {
   if (topicStatus) topicStatus.textContent = message || "";
 }
 
-async function loadTrendingTopics(menuId = currentMenuId, { force = false } = {}) {
+function getTopicCacheKey(menuId, query) {
+  return `${menuId}:${String(query || "").trim().toLowerCase()}`;
+}
+
+function setTopicSearchLoading(isLoading) {
+  refreshTopicsButton.disabled = isLoading;
+  const searchButton = topicSearchForm?.querySelector("button");
+  if (searchButton) searchButton.disabled = isLoading;
+}
+
+async function loadTrendingTopics(menuId = currentMenuId, { force = false, query = "" } = {}) {
   const menu = MENU_ITEMS.find((item) => item.id === menuId) || getCurrentMenu();
   if (menu.id === "java") return;
+  const requestedQuery = String(query || menu.searchQuery || menu.label).trim();
+  const cacheKey = getTopicCacheKey(menu.id, requestedQuery);
+  activeTopicCacheKey = cacheKey;
+  activeTopicQuery = requestedQuery;
 
-  if (!force && topicCache.has(menu.id)) {
-    renderTopicSuggestions(topicCache.get(menu.id));
+  if (!force && topicCache.has(cacheKey)) {
+    renderTopicSuggestions(topicCache.get(cacheKey));
     return;
   }
 
-  refreshTopicsButton.disabled = true;
+  setTopicSearchLoading(true);
   topicSuggestions.innerHTML = "";
-  setTopicStatus("인터넷에서 최근 이슈 주제를 검색 중입니다...");
+  setTopicStatus(`"${requestedQuery}" 관련 정보를 검색해 카드 주제를 만드는 중입니다...`);
 
   try {
-    const url = `/api/trending-topics?category=${encodeURIComponent(menu.id)}&q=${encodeURIComponent(menu.searchQuery || menu.label)}`;
+    const url = `/api/trending-topics?category=${encodeURIComponent(menu.id)}&q=${encodeURIComponent(requestedQuery)}`;
     const response = await fetch(url);
     const data = await response.json().catch(() => ({}));
 
     if (!response.ok) throw new Error(data.error || `주제 검색 실패: HTTP ${response.status}`);
 
-    topicCache.set(menu.id, data.topics || []);
+    topicCache.set(cacheKey, data.topics || []);
     renderTopicSuggestions(data.topics || []);
-    setTopicStatus(`${menu.label} 관련 최신 주제 ${data.topics?.length || 0}개를 불러왔습니다.`);
+    setTopicStatus(`"${requestedQuery}" 관련 주제 ${data.topics?.length || 0}개를 불러왔습니다.`);
   } catch (error) {
     renderTopicSuggestions([]);
     setTopicStatus(error.message || "최신 주제를 불러오지 못했습니다.");
   } finally {
-    refreshTopicsButton.disabled = false;
+    setTopicSearchLoading(false);
   }
 }
 
@@ -352,7 +371,7 @@ function renderTopicSuggestions(topics) {
 }
 
 function selectSuggestedTopic(index) {
-  const topics = topicCache.get(currentMenuId) || [];
+  const topics = topicCache.get(activeTopicCacheKey) || [];
   const topic = topics[index];
   if (!topic) return;
 
@@ -1761,8 +1780,24 @@ topicSuggestions.addEventListener("click", (event) => {
 });
 
 refreshTopicsButton.addEventListener("click", () => {
-  topicCache.delete(currentMenuId);
-  loadTrendingTopics(currentMenuId, { force: true });
+  const query = activeTopicQuery || topicSearchInput?.value.trim() || getCurrentMenu().searchQuery || getCurrentMenu().label;
+  topicCache.delete(getTopicCacheKey(currentMenuId, query));
+  loadTrendingTopics(currentMenuId, { force: true, query });
+});
+
+topicSearchForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const query = topicSearchInput.value.trim();
+
+  if (!query) {
+    showToast("검색할 키워드를 입력해 주세요.");
+    topicSearchInput.focus();
+    return;
+  }
+
+  selectedTopic = null;
+  clearOutputArea();
+  loadTrendingTopics(currentMenuId, { force: true, query });
 });
 
 clearSourceButton.addEventListener("click", () => {

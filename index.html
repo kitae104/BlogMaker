@@ -43,6 +43,13 @@
               <button id="refreshTopicsButton" class="secondary-button" type="button">주제 새로고침</button>
             </div>
             <p id="topicStatus" class="topic-status" aria-live="polite"></p>
+            <form id="topicSearchForm" class="topic-search-form">
+              <label for="topicSearchInput">키워드로 주제 찾기</label>
+              <div>
+                <input id="topicSearchInput" type="search" placeholder="예: AI 코딩 도구, Kubernetes 보안, Windows 개발 환경" />
+                <button class="secondary-button" type="submit">관련 주제 가져오기</button>
+              </div>
+            </form>
             <div id="topicSuggestions" class="topic-suggestions"></div>
           </section>
 
