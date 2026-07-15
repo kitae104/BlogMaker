@@ -89,13 +89,13 @@ OpenAI 모델은 화면에서 콤보 박스로 선택할 수 있습니다. 기�
 Ollama 서버가 실행 중이어야 합니다. 기본 주소는 아래 원격 Ollama 서버로 설정되어 있습니다.
 
 ```text
-http://114.71.147.30:21434
+http://localhost:11434
 ```
 
 `.env`에 기본 모델과 주소를 설정할 수 있습니다.
 
 ```text
-OLLAMA_BASE_URL=http://114.71.147.30:21434
+OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=qwen3.6:35b-a3b
 ```
 
