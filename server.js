@@ -34,6 +34,11 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (req.method === "POST" && req.url === "/api/wp-draft") {
+      await handleWordPressDraft(req, res);
+      return;
+    }
+
     if (req.method === "GET" && req.url === "/api/ollama-image-models") {
       await handleOllamaImageModels(req, res);
       return;
@@ -112,6 +117,8 @@ function getDefaultTrendQuery(category) {
   const queries = {
     it: "IT 기술 트렌드 클라우드 보안 디지털전환",
     programming: "소프트웨어 개발 프로그래밍 개발자 도구 AI 코딩",
+    "sw-testing": "소프트웨어 테스팅 QA 테스트 자동화 품질 보증 회귀 테스트",
+    "stock-beginner": "주식 초보 투자 기초 증시 시장 지표 포트폴리오",
     ai: "AI 인공지능 생성형AI 멀티모달 에이전트",
     server: "서버 운영 인프라 Kubernetes Docker 보안 모니터링",
     environment: "개발 환경 설정 IDE Node.js Docker Windows macOS 생산성",
@@ -224,6 +231,8 @@ function extractTopicKeywords(text, category) {
   const categoryTerms = {
     it: ["IT", "클라우드", "보안", "디지털전환"],
     programming: ["개발", "프로그래밍", "개발자", "도구"],
+    "sw-testing": ["테스팅", "QA", "테스트자동화", "품질보증"],
+    "stock-beginner": ["주식", "투자", "초보", "시장지표"],
     ai: ["AI", "인공지능", "생성형AI", "에이전트"],
     server: ["서버", "인프라", "운영", "보안"],
     environment: ["개발환경", "설정", "툴체인", "생산성"],
@@ -250,6 +259,8 @@ function toBlogTopicTitle(title, category) {
   const label = {
     it: "IT 이야기",
     programming: "개발 이야기",
+    "sw-testing": "SW 테스팅",
+    "stock-beginner": "주식 초보",
     ai: "AI 이야기",
     server: "서버 설정",
     environment: "환경 설정",
@@ -262,9 +273,9 @@ function toBlogTopicTitle(title, category) {
 function buildFallbackTopics(query, category) {
   const keywords = extractTopicKeywords(query, category);
   return [
-    "최근 기술 변화가 실무에 미치는 영향",
+    "최근 변화가 실무와 생활에 미치는 영향",
     "초보자가 알아야 할 핵심 개념과 적용 방법",
-    "기업과 개발자가 지금 확인해야 할 체크포인트",
+    "지금 확인해야 할 핵심 체크포인트",
     "앞으로 6개월 동안 주목할 변화와 대응 전략",
     "도입 전에 비교해야 할 장점과 한계",
   ].map((suffix) => ({
@@ -281,6 +292,7 @@ async function handleCoverBackground(req, res) {
   const body = await readJsonBody(req);
   const title = String(body.title || "").trim();
   const keywords = String(body.keywords || "").trim();
+  const categoryLabel = String(body.categoryLabel || "블로그").trim();
   const availableModels = await getOllamaImageModels();
   const model = String(body.model || availableModels[0]?.name || "").trim();
 
@@ -292,9 +304,10 @@ async function handleCoverBackground(req, res) {
   }
 
   const prompt = [
-    "Clean technology blog cover background, no text, no letters, no words.",
-    "Muted gray background with subtle connected hexagon nodes, faint circuit lines, soft depth.",
-    "Professional Korean programming education thumbnail style, centered empty area for title overlay.",
+    "Clean Korean blog cover background, no text, no letters, no words.",
+    "Muted professional background with subtle abstract shapes, soft depth, polished editorial style.",
+    "Professional Korean blog thumbnail style, centered empty area for title overlay.",
+    `Category: ${categoryLabel}.`,
     title ? `Topic: ${title}.` : "",
     keywords ? `Keywords: ${keywords}.` : "",
   ]
@@ -337,6 +350,7 @@ async function handleWordPressImages(req, res) {
   const body = await readJsonBody(req);
   const title = String(body.title || "").trim();
   const content = String(body.content || "").trim();
+  const categoryLabel = String(body.categoryLabel || "블로그").trim();
 
   if (!title || !content) {
     sendJson(res, 400, { error: "이미지를 생성할 블로그 제목과 본문이 필요합니다." });
@@ -358,7 +372,7 @@ async function handleWordPressImages(req, res) {
   const imageModel = String(body.imageModel || process.env.GEMINI_IMAGE_MODEL || "imagen-4.0-fast-generate-001").trim();
 
   try {
-    const metadata = await generateWordPressImageMetadata(ai, Type, promptModel, title, content);
+    const metadata = await generateWordPressImageMetadata(ai, Type, promptModel, title, content, categoryLabel);
     const specs = [
       { type: "featured", aspectRatio: "16:9", width: 1200, height: 630, overlayTitle: title },
       { type: "content", aspectRatio: "16:9", width: 1024, height: null, overlayTitle: "" },
@@ -367,10 +381,10 @@ async function handleWordPressImages(req, res) {
     const images = [];
 
     for (const spec of specs) {
-      const itemMetadata = normalizeImageMetadata(metadata[spec.type], title, spec.type);
+      const itemMetadata = normalizeImageMetadata(metadata[spec.type], title, spec.type, categoryLabel);
       const imageResponse = await ai.models.generateImages({
         model: imageModel,
-        prompt: buildWordPressImagePrompt(itemMetadata.prompt, spec.type),
+        prompt: buildWordPressImagePrompt(itemMetadata.prompt, spec.type, categoryLabel),
         config: {
           numberOfImages: 1,
           aspectRatio: spec.aspectRatio,
@@ -400,6 +414,422 @@ async function handleWordPressImages(req, res) {
     const normalized = normalizeGoogleApiError(error);
     sendJson(res, normalized.statusCode, { error: normalized.message });
   }
+}
+
+async function handleWordPressDraft(req, res) {
+  const body = await readJsonBody(req);
+  const title = String(body.title || "").trim();
+  const markdown = String(body.markdown || "").trim();
+
+  if (!title || !markdown) {
+    sendJson(res, 400, { error: "WordPress에 발행할 제목과 Markdown 본문이 필요합니다." });
+    return;
+  }
+
+  const config = getWordPressConfig();
+  const images = Array.isArray(body.images) ? body.images : [];
+  const uploadedImages = [];
+
+  for (const image of images) {
+    if (!image?.dataUrl) continue;
+    const uploaded = await uploadWordPressMedia(config, image);
+    uploadedImages.push(uploaded);
+  }
+
+  const categoryIds = [];
+  const tagIds = [];
+  const warnings = [];
+
+  if (body.category) {
+    try {
+      const category = await ensureWordPressTerm(config, "categories", String(body.category).trim());
+      if (category?.id) categoryIds.push(category.id);
+    } catch (error) {
+      warnings.push(`카테고리 설정 실패: ${error.message}`);
+    }
+  }
+
+  for (const tagName of Array.isArray(body.tags) ? body.tags : []) {
+    const cleanTagName = String(tagName || "").trim();
+    if (!cleanTagName) continue;
+
+    try {
+      const tag = await ensureWordPressTerm(config, "tags", cleanTagName);
+      if (tag?.id) tagIds.push(tag.id);
+    } catch (error) {
+      warnings.push(`태그 설정 실패(${cleanTagName}): ${error.message}`);
+    }
+  }
+
+  const featuredImage = uploadedImages.find((image) => image.type === "featured");
+  const content = buildWordPressDraftContent(markdown, uploadedImages);
+  const postPayload = {
+    title,
+    content,
+    status: "draft",
+    slug: String(body.slug || "").trim() || undefined,
+    excerpt: String(body.metaDescription || "").trim() || undefined,
+    categories: categoryIds,
+    tags: tagIds,
+    featured_media: featuredImage?.id || undefined,
+  };
+  const post = await wordpressRequest(config, "POST", "/posts", {
+    json: removeUndefinedFields(postPayload),
+  });
+
+  await tryUpdateSeoPluginMeta(config, post.id, body, warnings);
+
+  sendJson(res, 200, {
+    id: post.id,
+    status: post.status,
+    link: post.link,
+    editLink: post._links?.self?.[0]?.href || "",
+    uploadedImages: uploadedImages.map((image) => ({
+      id: image.id,
+      type: image.type,
+      sourceUrl: image.sourceUrl,
+      filename: image.filename,
+    })),
+    warnings,
+  });
+}
+
+async function tryUpdateSeoPluginMeta(config, postId, body, warnings) {
+  const focusKeyword = String(body.focusKeyword || "").trim();
+  const seoTitle = String(body.seoTitle || body.title || "").trim();
+  const metaDescription = String(body.metaDescription || "").trim();
+
+  if (!postId || (!focusKeyword && !seoTitle && !metaDescription)) return;
+
+  try {
+    await wordpressRequest(config, "POST", `/posts/${postId}`, {
+      json: {
+        meta: removeUndefinedFields({
+          _yoast_wpseo_focuskw: focusKeyword || undefined,
+          _yoast_wpseo_title: seoTitle || undefined,
+          _yoast_wpseo_metadesc: metaDescription || undefined,
+          rank_math_focus_keyword: focusKeyword || undefined,
+          rank_math_title: seoTitle || undefined,
+          rank_math_description: metaDescription || undefined,
+        }),
+      },
+    });
+  } catch (error) {
+    warnings.push(`SEO 플러그인 메타 자동 입력은 건너뜀: ${error.message}`);
+  }
+}
+
+function getWordPressConfig() {
+  const siteUrl = normalizeWordPressSiteUrl(process.env.WP_SITE_URL);
+  const username = String(process.env.WP_USERNAME || "").trim();
+  const appPassword = String(process.env.WP_APP_PASSWORD || "").trim();
+
+  if (!siteUrl || !username || !appPassword) {
+    throw new Error(".env에 WP_SITE_URL, WP_USERNAME, WP_APP_PASSWORD를 설정해 주세요.");
+  }
+
+  return {
+    siteUrl,
+    username,
+    appPassword,
+    authHeader: `Basic ${Buffer.from(`${username}:${appPassword}`).toString("base64")}`,
+  };
+}
+
+function normalizeWordPressSiteUrl(value) {
+  return String(value || "").trim().replace(/\/+$/, "");
+}
+
+async function wordpressRequest(config, method, endpoint, options = {}) {
+  const headers = {
+    Authorization: config.authHeader,
+    Accept: "application/json",
+    ...(options.headers || {}),
+  };
+  let body = options.body;
+
+  if (options.json) {
+    headers["Content-Type"] = "application/json; charset=utf-8";
+    body = JSON.stringify(options.json);
+  }
+
+  const response = await fetch(`${config.siteUrl}/wp-json/wp/v2${endpoint}`, {
+    method,
+    headers,
+    body,
+  });
+  const text = await response.text();
+  let data = {};
+
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    data = { message: text.slice(0, 240) };
+  }
+
+  if (!response.ok) {
+    const message = data.message || data.code || `WordPress 요청 실패: HTTP ${response.status}`;
+    throw new Error(message);
+  }
+
+  return data;
+}
+
+async function uploadWordPressMedia(config, image) {
+  const { buffer, mimeType } = dataUrlToBuffer(image.dataUrl);
+  const filename = sanitizeFilename(image.filename || getDefaultWordPressImageFilename(image.type), mimeType);
+  const metadata = image.metadata || {};
+  const uploaded = await wordpressRequest(config, "POST", "/media", {
+    headers: {
+      "Content-Type": mimeType,
+      "Content-Disposition": `attachment; filename="${filename}"`,
+    },
+    body: buffer,
+  });
+  const mediaId = uploaded.id;
+
+  if (mediaId) {
+    await wordpressRequest(config, "POST", `/media/${mediaId}`, {
+      json: removeUndefinedFields({
+        title: String(metadata.title || "").trim() || undefined,
+        caption: String(metadata.caption || "").trim() || undefined,
+        alt_text: String(metadata.altText || "").trim() || undefined,
+        description: String(metadata.description || "").trim() || undefined,
+      }),
+    });
+  }
+
+  return {
+    id: mediaId,
+    type: image.type || "",
+    filename,
+    sourceUrl: uploaded.source_url || uploaded.guid?.rendered || "",
+    metadata,
+  };
+}
+
+function dataUrlToBuffer(dataUrl) {
+  const match = String(dataUrl || "").match(/^data:([^;,]+);base64,([\s\S]+)$/);
+  if (!match) {
+    throw new Error("이미지 데이터 URL 형식이 올바르지 않습니다.");
+  }
+
+  return {
+    mimeType: match[1],
+    buffer: Buffer.from(match[2], "base64"),
+  };
+}
+
+function sanitizeFilename(filename, mimeType) {
+  const fallbackExt = mimeType === "image/png" ? ".png" : ".webp";
+  const safeName = String(filename || `wp-image${fallbackExt}`)
+    .replace(/[\\/:*?"<>|]+/g, "-")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+
+  return /\.[a-z0-9]+$/i.test(safeName) ? safeName : `${safeName}${fallbackExt}`;
+}
+
+function getDefaultWordPressImageFilename(type) {
+  if (type === "featured") return "wp-featured.webp";
+  if (type === "content") return "wp-content-1.webp";
+  return "wp-content-2.webp";
+}
+
+async function ensureWordPressTerm(config, taxonomy, name) {
+  if (!name) return null;
+
+  const existing = await wordpressRequest(config, "GET", `/${taxonomy}?search=${encodeURIComponent(name)}&per_page=20`);
+  const exact = Array.isArray(existing)
+    ? existing.find((term) => String(term.name || "").trim().toLowerCase() === name.toLowerCase())
+    : null;
+
+  if (exact) return exact;
+
+  return wordpressRequest(config, "POST", `/${taxonomy}`, {
+    json: { name },
+  });
+}
+
+function buildWordPressDraftContent(markdown, uploadedImages) {
+  const contentImage = uploadedImages.find((image) => image.type === "content");
+  const summaryImage = uploadedImages.find((image) => image.type === "contentSecondary");
+  let content = stripWordPressImagePrompt(markdown).trim();
+
+  content = insertMarkdownAfterIntro(content, "\n\n{{WP_CONTENT_IMAGE_1}}\n\n");
+  content = insertMarkdownBeforeWrapUp(content, "\n\n{{WP_CONTENT_IMAGE_2}}\n\n");
+  content = stripFirstMarkdownHeading(content);
+  content = markdownToWordPressHtml(content);
+
+  return content
+    .replace("{{WP_CONTENT_IMAGE_1}}", buildWordPressImageHtml(contentImage))
+    .replace("{{WP_CONTENT_IMAGE_2}}", buildWordPressImageHtml(summaryImage))
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function insertMarkdownAfterIntro(markdown, block) {
+  const match = markdown.match(/^(#\s+.+\n\n[\s\S]*?)(\n{2,}##\s+)/);
+  if (match) return markdown.replace(match[0], `${match[1]}${block}${match[2]}`);
+
+  const titleMatch = markdown.match(/^(#\s+.+\n)/);
+  if (titleMatch) return markdown.replace(titleMatch[0], `${titleMatch[0]}${block}`);
+
+  return `${block}${markdown}`;
+}
+
+function insertMarkdownBeforeWrapUp(markdown, block) {
+  const wrapUpRegex = /\n##\s+(?:마무리(?:\s*정리)?|정리|결론)(?=\s|$)/;
+  if (wrapUpRegex.test(markdown)) return markdown.replace(wrapUpRegex, `${block}$&`);
+
+  return `${markdown.trim()}${block}`;
+}
+
+function stripFirstMarkdownHeading(markdown) {
+  return String(markdown || "").replace(/^#\s+.+\n+/, "").trim();
+}
+
+function buildWordPressImageHtml(image) {
+  if (!image?.sourceUrl) return "";
+
+  const metadata = image.metadata || {};
+  const altText = escapeHtml(String(metadata.altText || ""));
+  const title = escapeHtml(String(metadata.title || ""));
+  const caption = escapeHtml(String(metadata.caption || ""));
+  const idPart = image.id ? `{"id":${image.id},"sizeSlug":"large"}` : `{"sizeSlug":"large"}`;
+
+  return `<!-- wp:image ${idPart} -->
+<figure class="wp-block-image size-large"><img src="${escapeHtml(image.sourceUrl)}" alt="${altText}"${title ? ` title="${title}"` : ""}/>${caption ? `<figcaption>${caption}</figcaption>` : ""}</figure>
+<!-- /wp:image -->`;
+}
+
+function markdownToWordPressHtml(markdown) {
+  const lines = String(markdown || "").split("\n");
+  const html = [];
+  let paragraph = [];
+  let list = [];
+  let codeLines = null;
+  let tableLines = [];
+
+  const flushParagraph = () => {
+    if (!paragraph.length) return;
+    html.push(`<!-- wp:paragraph -->\n<p>${formatInlineMarkdown(paragraph.join(" "))}</p>\n<!-- /wp:paragraph -->`);
+    paragraph = [];
+  };
+  const flushList = () => {
+    if (!list.length) return;
+    html.push(`<!-- wp:list -->\n<ul>${list.map((item) => `<li>${formatInlineMarkdown(item)}</li>`).join("")}</ul>\n<!-- /wp:list -->`);
+    list = [];
+  };
+  const flushTable = () => {
+    if (!tableLines.length) return;
+    html.push(markdownTableToHtml(tableLines));
+    tableLines = [];
+  };
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    if (codeLines) {
+      if (trimmed.startsWith("```")) {
+        html.push(`<!-- wp:code -->\n<pre class="wp-block-code"><code>${escapeHtml(codeLines.join("\n"))}</code></pre>\n<!-- /wp:code -->`);
+        codeLines = null;
+      } else {
+        codeLines.push(line);
+      }
+      continue;
+    }
+
+    if (trimmed.startsWith("```")) {
+      flushParagraph();
+      flushList();
+      flushTable();
+      codeLines = [];
+      continue;
+    }
+
+    if (/^\{\{WP_CONTENT_IMAGE_[12]\}\}$/.test(trimmed)) {
+      flushParagraph();
+      flushList();
+      flushTable();
+      html.push(trimmed);
+      continue;
+    }
+
+    if (/^\|.+\|$/.test(trimmed)) {
+      flushParagraph();
+      flushList();
+      tableLines.push(trimmed);
+      continue;
+    }
+
+    if (tableLines.length) flushTable();
+
+    if (!trimmed) {
+      flushParagraph();
+      flushList();
+      continue;
+    }
+
+    const headingMatch = trimmed.match(/^(#{2,6})\s+(.+)$/);
+    if (headingMatch) {
+      flushParagraph();
+      flushList();
+      html.push(`<!-- wp:heading {"level":${headingMatch[1].length}} -->\n<h${headingMatch[1].length}>${formatInlineMarkdown(headingMatch[2])}</h${headingMatch[1].length}>\n<!-- /wp:heading -->`);
+      continue;
+    }
+
+    const listMatch = trimmed.match(/^[-*]\s+(.+)$/);
+    if (listMatch) {
+      flushParagraph();
+      list.push(listMatch[1]);
+      continue;
+    }
+
+    paragraph.push(trimmed);
+  }
+
+  if (codeLines) {
+    html.push(`<!-- wp:code -->\n<pre class="wp-block-code"><code>${escapeHtml(codeLines.join("\n"))}</code></pre>\n<!-- /wp:code -->`);
+  }
+  flushParagraph();
+  flushList();
+  flushTable();
+
+  return html.join("\n\n");
+}
+
+function markdownTableToHtml(tableLines) {
+  const rows = tableLines
+    .filter((line) => !/^\|\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$/.test(line))
+    .map((line) => line.replace(/^\||\|$/g, "").split("|").map((cell) => cell.trim()));
+
+  if (!rows.length) return "";
+
+  const [header, ...bodyRows] = rows;
+  const headHtml = `<thead><tr>${header.map((cell) => `<th>${formatInlineMarkdown(cell)}</th>`).join("")}</tr></thead>`;
+  const bodyHtml = `<tbody>${bodyRows.map((row) => `<tr>${row.map((cell) => `<td>${formatInlineMarkdown(cell)}</td>`).join("")}</tr>`).join("")}</tbody>`;
+
+  return `<!-- wp:table -->\n<figure class="wp-block-table"><table>${headHtml}${bodyHtml}</table></figure>\n<!-- /wp:table -->`;
+}
+
+function formatInlineMarkdown(value) {
+  return escapeHtml(String(value || ""))
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function removeUndefinedFields(value) {
+  return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined));
 }
 
 function normalizeGoogleApiError(error) {
@@ -442,7 +872,7 @@ async function loadGoogleGenAI() {
   }
 }
 
-async function generateWordPressImageMetadata(ai, Type, model, title, content) {
+async function generateWordPressImageMetadata(ai, Type, model, title, content, categoryLabel) {
   const prompt = `You are an expert WordPress blog image creator.
 Based on the following blog title and content, generate image generation prompts and metadata for 3 images:
 1. Featured Image (대표 이미지)
@@ -450,6 +880,7 @@ Based on the following blog title and content, generate image generation prompts
 3. Content Image 2 (본문 이미지 2)
 
 Blog Title: ${title}
+Blog Category: ${categoryLabel}
 Blog Content:
 ${content}
 
@@ -518,9 +949,9 @@ function getImageMetadataSchema(Type) {
   };
 }
 
-function normalizeImageMetadata(metadata, blogTitle, type) {
+function normalizeImageMetadata(metadata, blogTitle, type, categoryLabel) {
   const label = getWordPressImageTypeLabel(type);
-  const fallbackPrompt = `Professional WordPress blog image for a Korean Java programming education article titled "${blogTitle}", clean technical illustration, modern editorial style, no text, no logos, no watermark.`;
+  const fallbackPrompt = `Professional WordPress blog image for a Korean ${categoryLabel} article titled "${blogTitle}", clean editorial illustration, modern style, no text, no logos, no watermark.`;
 
   return {
     prompt: String(metadata?.prompt || fallbackPrompt).trim(),
@@ -531,7 +962,7 @@ function normalizeImageMetadata(metadata, blogTitle, type) {
   };
 }
 
-function buildWordPressImagePrompt(prompt, type) {
+function buildWordPressImagePrompt(prompt, type, categoryLabel) {
   const role = type === "featured"
     ? "Create a high-impact WordPress featured image with strong composition and safe empty space for a title overlay."
     : "Create a clean WordPress in-content illustration that supports the article section without any overlaid text.";
@@ -540,7 +971,7 @@ function buildWordPressImagePrompt(prompt, type) {
     role,
     prompt,
     "No readable text, no captions, no logos, no watermark, no UI chrome.",
-    "Professional Korean technology blog visual, polished, accessible, editorial quality.",
+    `Professional Korean ${categoryLabel} blog visual, polished, accessible, editorial quality.`,
   ].join(" ");
 }
 
@@ -626,6 +1057,7 @@ function buildGenericSeoRefineMessages(body, markdown, seoReport) {
 
 역할:
 - 기존 글의 주제와 논지를 유지하면서 SEO 점검 실패 항목만 보완합니다.
+- 얇은 요약문이 되지 않도록 FAQ, 실전 체크포인트, 주의점을 보강합니다.
 - Markdown 본문만 출력합니다.
 - 이미지 프롬프트 섹션은 작성하지 않습니다.`,
     },
@@ -633,8 +1065,8 @@ function buildGenericSeoRefineMessages(body, markdown, seoReport) {
       role: "user",
       content: `아래 글을 SEO 기준에 맞게 수정해 주세요.
 
-메뉴: ${body.categoryLabel || "기술 블로그"}
-핵심 키워드: ${body.keywords || "기술 이슈"}
+메뉴: ${body.categoryLabel || "블로그"}
+핵심 키워드: ${body.keywords || body.categoryLabel || "블로그 주제"}
 
 실패한 점검 항목:
 ${failedChecks || "- 제목, 키워드, H2 구조, 마무리 표를 전반적으로 개선해야 합니다."}
@@ -642,8 +1074,11 @@ ${failedChecks || "- 제목, 키워드, H2 구조, 마무리 표를 전반적으
 수정 기준:
 - 제목은 25~70자 사이로 작성합니다.
 - 첫 문단에 핵심 키워드를 자연스럽게 포함합니다.
-- H2 섹션을 5개 이상 유지합니다.
+- H2 섹션을 7개 이상 유지합니다.
 - 마지막에는 마무리 정리 표를 포함합니다.
+- FAQ 섹션에 질문 3개 이상과 구체적인 답변을 포함합니다.
+- 실전 적용 방법, 체크리스트, 주의할 점 중 부족한 섹션을 추가합니다.
+- 본문이 짧으면 고유한 설명과 예시를 추가해 한국어 기준 1,500자 이상으로 보완합니다.
 - 원문을 복붙하지 말고 자연스럽게 다듬습니다.
 
 기존 Markdown:
@@ -666,6 +1101,7 @@ function buildSeoRefineMessages(body, markdown, seoReport) {
 역할:
 - 기존 Markdown 글의 구조와 내용을 유지하되 SEO 기준에 맞게 수정합니다.
 - Java 초보자를 위한 설명 톤과 원본 코드의 의미를 유지합니다.
+- 얇은 코드 요약문이 되지 않도록 FAQ, 초보자 실수, 직접 연습 과제를 보강합니다.
 - Markdown 본문만 출력합니다. 수정 이유나 평가표는 출력하지 않습니다.
 - 워드프레스 대표 이미지 프롬프트 섹션은 절대 작성하지 않습니다.`,
     },
@@ -686,6 +1122,9 @@ ${failedChecks || "- 전반적인 SEO 품질을 개선해야 합니다."}
 - H2 섹션 구조를 유지합니다.
 - java, text 코드 블록 언어명을 유지합니다.
 - 마지막에 마무리 정리 표를 유지합니다.
+- "초보자가 자주 헷갈리는 부분", "직접 연습해 볼 과제", "자주 묻는 질문" 섹션을 보완합니다.
+- FAQ에는 질문 3개 이상과 구체적인 답변을 포함합니다.
+- 본문이 짧으면 설명과 예시를 추가해 한국어 기준 1,500자 이상으로 보완합니다.
 - 워드프레스 대표 이미지 프롬프트 섹션은 작성하지 않습니다.
 
 기존 Markdown:
@@ -707,6 +1146,10 @@ function auditSeoMarkdown(markdown, body) {
   const title = markdown.match(/^#\s+(.+)$/m)?.[1]?.trim() || "";
   const bodyWithoutCode = markdown.replace(/```[\s\S]*?```/g, "");
   const lowerBody = bodyWithoutCode.toLowerCase();
+  const plainTextLength = bodyWithoutCode.replace(/[#*_`>|-]/g, " ").replace(/\s+/g, " ").trim().length;
+  const faqCount = (markdown.match(/^###\s+/gm) || []).length;
+  const hasFaqSection = /##\s*(자주\s*묻는\s*질문|FAQ)/i.test(markdown);
+  const hasPracticalSection = /##\s*(초보자가\s*자주\s*헷갈리는\s*부분|직접\s*연습|실전|체크리스트|주의|적용|활용)/i.test(markdown);
   const matchedKeywordCount = keywords
     .slice(0, 5)
     .filter((keyword) => lowerBody.includes(keyword.toLowerCase())).length;
@@ -736,6 +1179,18 @@ function auditSeoMarkdown(markdown, body) {
       label: "마무리 정리 표가 포함되어 있습니다.",
       passed: markdown.includes("|") && markdown.includes("---"),
     },
+    {
+      label: "본문이 얇은 콘텐츠로 보이지 않을 만큼 충분히 작성되어 있습니다.",
+      passed: plainTextLength >= 1200,
+    },
+    {
+      label: "FAQ 섹션이 있어 독자의 추가 질문에 답합니다.",
+      passed: hasFaqSection && faqCount >= 3,
+    },
+    {
+      label: "실전 적용, 연습 과제, 주의점 중 하나 이상을 포함합니다.",
+      passed: hasPracticalSection,
+    },
   ];
   const passedCount = checks.filter((check) => check.passed).length;
 
@@ -748,14 +1203,18 @@ function auditSeoMarkdown(markdown, body) {
 }
 
 function auditGenericSeoMarkdown(markdown, body) {
-  const keywords = String(body.keywords || body.categoryLabel || "기술 이슈")
+  const keywords = String(body.keywords || body.categoryLabel || "블로그 주제")
     .split(",")
     .map((keyword) => keyword.trim())
     .filter(Boolean);
-  const primaryKeyword = keywords[0] || "기술 이슈";
+  const primaryKeyword = keywords[0] || "블로그 주제";
   const title = markdown.match(/^#\s+(.+)$/m)?.[1]?.trim() || "";
   const bodyWithoutCode = markdown.replace(/```[\s\S]*?```/g, "");
   const lowerBody = bodyWithoutCode.toLowerCase();
+  const plainTextLength = bodyWithoutCode.replace(/[#*_`>|-]/g, " ").replace(/\s+/g, " ").trim().length;
+  const faqCount = (markdown.match(/^###\s+/gm) || []).length;
+  const hasFaqSection = /##\s*(자주\s*묻는\s*질문|FAQ)/i.test(markdown);
+  const hasPracticalSection = /##\s*(실무|직접\s*연습|체크리스트|주의|적용|활용)/i.test(markdown);
   const matchedKeywordCount = keywords
     .slice(0, 5)
     .filter((keyword) => lowerBody.includes(keyword.toLowerCase())).length;
@@ -774,12 +1233,24 @@ function auditGenericSeoMarkdown(markdown, body) {
       passed: matchedKeywordCount >= Math.min(3, keywords.length || 3),
     },
     {
-      label: "H2 섹션이 5개 이상 포함되어 글 구조가 명확합니다.",
-      passed: h2Count >= 5,
+      label: "H2 섹션이 7개 이상 포함되어 글 구조가 명확합니다.",
+      passed: h2Count >= 7,
     },
     {
       label: "마무리 정리 표가 포함되어 있습니다.",
       passed: markdown.includes("|") && markdown.includes("---"),
+    },
+    {
+      label: "본문이 얇은 콘텐츠로 보이지 않을 만큼 충분히 작성되어 있습니다.",
+      passed: plainTextLength >= 1200,
+    },
+    {
+      label: "FAQ 섹션이 있어 독자의 추가 질문에 답합니다.",
+      passed: hasFaqSection && faqCount >= 3,
+    },
+    {
+      label: "실전 적용, 체크리스트, 주의점 중 하나 이상을 포함합니다.",
+      passed: hasPracticalSection,
     },
   ];
   const passedCount = checks.filter((check) => check.passed).length;
@@ -809,7 +1280,8 @@ function buildGenericBlogMessages(body) {
 
 역할:
 - 사용자가 선택하거나 입력한 주제를 바탕으로 검색 유입을 고려한 Markdown 블로그 글을 작성합니다.
-- 단순 뉴스 요약이 아니라 독자에게 배경, 핵심 쟁점, 실무적 시사점, 앞으로 볼 점을 설명합니다.
+- 단순 뉴스 요약이 아니라 독자에게 배경, 핵심 쟁점, 실전적 시사점, 앞으로 볼 점을 설명합니다.
+- Google 검색과 AdSense 심사에 불리한 얇은 요약문을 피하고, 독자가 실제로 얻어갈 수 있는 고유한 설명을 충분히 제공합니다.
 - 출처 문장을 복사하지 말고 완전히 새롭게 작성합니다.
 - Markdown 본문만 출력합니다. 안내문, 사과문, 이미지 프롬프트 섹션은 출력하지 않습니다.`,
     },
@@ -819,7 +1291,7 @@ function buildGenericBlogMessages(body) {
 
 메뉴: ${categoryLabel}
 글 톤: ${tone}
-핵심 키워드: ${keywords || "최신 기술 이슈, 블로그 주제"}
+핵심 키워드: ${keywords || "최신 이슈, 블로그 주제"}
 
 선택된 최신 이슈:
 ${topicTitle ? `- 주제: ${topicTitle}` : ""}
@@ -832,11 +1304,14 @@ ${body.input}
 
 작성 규칙:
 - 제목은 25~70자 사이로 작성하고 핵심 키워드 1개 이상을 포함합니다.
-- 첫 문단에서 왜 지금 이 주제를 봐야 하는지 설명합니다.
-- H2 섹션 5개 이상을 사용합니다.
+- 첫 문단 2~3문장 안에 핵심 키워드를 자연스럽게 포함하고, 독자가 이 글에서 얻는 답을 분명히 제시합니다.
+- H2 섹션 7개 이상을 사용합니다.
 - 중간에 불릿 목록을 1개 이상 포함합니다.
 - 마지막에는 "| 항목 | 정리 |" 형태의 마무리 표를 포함합니다.
-- 독자가 바로 활용할 수 있는 관점과 체크포인트를 포함합니다.
+- 독자가 바로 활용할 수 있는 체크리스트, 실전 적용 방법, 주의할 점을 각각 별도 섹션으로 포함합니다.
+- "자주 묻는 질문" H2 섹션을 만들고 질문 3개 이상과 구체적인 답변을 작성합니다.
+- 단순한 정의나 뉴스 요약에 머무르지 말고, 왜 중요한지와 어떤 상황에서 써먹을 수 있는지를 설명합니다.
+- 본문은 한국어 기준 최소 1,500자 이상이 되도록 충분히 작성합니다.
 - 워드프레스 대표 이미지 프롬프트 섹션은 작성하지 않습니다.`,
     },
   ];
@@ -852,6 +1327,7 @@ function buildMessages(body) {
 - 사용자가 입력한 Java 문제, 데이터, 요구사항, 소스 코드를 바탕으로 워드프레스에 바로 게시 가능한 Markdown 글을 작성합니다.
 - 대상 독자는 Java 초보자 또는 학생입니다.
 - 설명은 친절한 강의체로 작성하되 과하게 길게 늘리지 않습니다.
+- 단순 코드 나열이 아니라 초보자가 실제로 이해하고 다시 응용할 수 있는 고유한 설명을 제공합니다.
 
 반드시 지킬 규칙:
 - Markdown만 출력합니다. 앞뒤 안내 문장이나 코드펜스 바깥의 불필요한 설명은 붙이지 않습니다.
@@ -888,6 +1364,11 @@ SEO 키워드: ${body.keywords || "Java, Stream, sorted(), Comparator"}
 
 추가 조건:
 ${seoInstruction}
+- "초보자가 자주 헷갈리는 부분" 섹션을 포함합니다.
+- "직접 연습해 볼 과제" 섹션을 포함합니다.
+- "자주 묻는 질문" 섹션을 만들고 질문 3개 이상에 답합니다.
+- 본문은 한국어 기준 최소 1,500자 이상으로 작성합니다.
+- 검색엔진보다 독자에게 도움이 되는 설명을 우선하고, 중복되거나 일반적인 문장은 줄입니다.
 - 대표 이미지 프롬프트 섹션은 작성하지 않습니다.
 ${codeFixInstruction}
 
@@ -1014,10 +1495,11 @@ function serveStatic(req, res) {
 function readJsonBody(req) {
   return new Promise((resolve, reject) => {
     let raw = "";
+    const maxBodySize = 60_000_000;
 
     req.on("data", (chunk) => {
       raw += chunk;
-      if (raw.length > 250_000) {
+      if (raw.length > maxBodySize) {
         reject(new Error("요청 본문이 너무 큽니다."));
         req.destroy();
       }

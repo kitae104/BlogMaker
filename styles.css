@@ -543,6 +543,32 @@ textarea {
   margin-bottom: 8px;
 }
 
+.seo-details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 10px 0 12px;
+}
+
+.seo-details p {
+  margin: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.seo-details strong {
+  display: block;
+  margin: 0 0 3px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .seo-report ul {
   margin: 0;
   padding-left: 18px;
@@ -563,6 +589,30 @@ textarea {
 .seo-report .fail {
   color: var(--accent);
   font-weight: 700;
+}
+
+.wp-publish-status {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.wp-publish-status:empty {
+  display: none;
+}
+
+.wp-publish-status.is-success {
+  color: var(--primary);
+}
+
+.wp-publish-status.is-error {
+  padding: 12px 14px;
+  border: 1px solid rgba(179, 71, 33, 0.24);
+  border-radius: 8px;
+  background: #fff6f1;
+  color: #8f3519;
 }
 
 .cover-panel {
@@ -837,6 +887,10 @@ textarea {
 
   .seo-report ul {
     columns: 1;
+  }
+
+  .seo-details {
+    grid-template-columns: 1fr;
   }
 }
 

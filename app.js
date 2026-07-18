@@ -113,6 +113,38 @@ const MENU_ITEMS = [
     ],
   },
   {
+    id: "sw-testing",
+    label: "SW 테스팅",
+    description: "품질과 테스트 전략",
+    eyebrow: "SW Testing Writer",
+    title: "SW 테스팅",
+    sourceTitle: "블로그 주제",
+    sourceHint: "테스트 자동화, QA, 품질 개선 관련 최신 주제를 선택하거나 직접 입력하세요.",
+    placeholder: "예: 개발팀이 회귀 테스트 자동화를 도입할 때 먼저 정해야 할 기준",
+    searchQuery: "소프트웨어 테스팅 QA 테스트 자동화 품질 보증 회귀 테스트",
+    tones: [
+      { value: "qa-practical", label: "QA 실무형" },
+      { value: "testing-guide", label: "테스트 가이드형" },
+      { value: "case-study", label: "사례 분석형" },
+    ],
+  },
+  {
+    id: "stock-beginner",
+    label: "주식 초보",
+    description: "투자 기초와 실전",
+    eyebrow: "Stock Beginner Writer",
+    title: "주식 초보",
+    sourceTitle: "블로그 주제",
+    sourceHint: "주식 기초, 시장 흐름, 초보 투자자가 알아야 할 주제를 선택하거나 직접 입력하세요.",
+    placeholder: "예: 주식 초보가 실적 발표 시즌에 확인해야 할 기본 지표",
+    searchQuery: "주식 초보 투자 기초 증시 시장 지표 포트폴리오",
+    tones: [
+      { value: "beginner-investing", label: "초보자 설명형" },
+      { value: "risk-aware", label: "위험 관리형" },
+      { value: "market-note", label: "시장 해설형" },
+    ],
+  },
+  {
     id: "ai",
     label: "AI 이야기",
     description: "AI 뉴스와 활용",
@@ -201,8 +233,10 @@ const autoWpImagesCheck = document.querySelector("#autoWpImagesCheck");
 const generateWpImagesButton = document.querySelector("#generateWpImagesButton");
 const downloadWpImagesButton = document.querySelector("#downloadWpImagesButton");
 const copyWpMetadataButton = document.querySelector("#copyWpMetadataButton");
+const publishDraftButton = document.querySelector("#publishDraftButton");
 const wpImageStatus = document.querySelector("#wpImageStatus");
 const wpImageResults = document.querySelector("#wpImageResults");
+const wpPublishStatus = document.querySelector("#wpPublishStatus");
 
 let lastAutoKeywords = keywordInput.value.trim();
 let generationTimer = null;
@@ -742,6 +776,7 @@ async function generateOllamaCoverBackground(title) {
     body: JSON.stringify({
       title,
       keywords: keywordInput.value.trim(),
+      categoryLabel: getCurrentMenu().label,
       model: ollamaImageModels[0]?.name || "",
     }),
   });
@@ -969,7 +1004,7 @@ async function generateWordPressImages() {
     const response = await fetch("/api/wp-images", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title, content }),
+      body: JSON.stringify({ title, content, categoryLabel: getCurrentMenu().label }),
     });
     const data = await response.json().catch(() => ({}));
 
@@ -994,6 +1029,7 @@ async function generateWordPressImages() {
 
     wpImageResultsData = processed;
     renderWpImageResults();
+    refreshSeoReport();
     setWpImageStatus(`WordPress 이미지 ${processed.length}개를 생성했습니다.`);
     showToast("WordPress 이미지와 메타데이터를 생성했습니다.");
   } catch (error) {
@@ -1125,6 +1161,154 @@ ${metadata.caption || ""}
 ${metadata.description || ""}`;
 }
 
+function refreshSeoReport() {
+  if (!markdownOutput.value.trim()) return;
+  renderSeoReport(auditSeoMarkdown(markdownOutput.value, keywordInput.value.trim()));
+}
+
+function getMarkdownTitle(markdown) {
+  return String(markdown || "").match(/^#\s+(.+)$/m)?.[1]?.trim() || "";
+}
+
+function getActiveKeywords() {
+  const directKeywords = keywordInput.value
+    .split(",")
+    .map((keyword) => keyword.trim())
+    .filter(Boolean);
+
+  if (directKeywords.length) return directKeywords;
+
+  return extractGenericKeywords(`${sourceInput.value}\n${markdownOutput.value}`, 7)
+    .split(",")
+    .map((keyword) => keyword.trim())
+    .filter(Boolean);
+}
+
+function slugifyPostTitle(title, keywords = []) {
+  const base = keywords.length ? keywords.slice(0, 4).join(" ") : title;
+  return String(base || "blog-post")
+    .toLowerCase()
+    .replace(/[`"'’“”()[\]{}]/g, "")
+    .replace(/[^a-z0-9가-힣ㄱ-ㅎㅏ-ㅣ\s-]/g, " ")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 70) || "blog-post";
+}
+
+function stripMarkdownForDescription(markdown) {
+  return String(markdown || "")
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/!\[[^\]]*]\([^)]+\)/g, " ")
+    .replace(/\[[^\]]+]\([^)]+\)/g, (match) => match.match(/\[([^\]]+)]/)?.[1] || " ")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/[*_`>|-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function buildMetaDescription(markdown, keywords = []) {
+  const primaryKeyword = keywords[0] || getCurrentMenu().label;
+  const text = stripMarkdownForDescription(markdown);
+  const sentences = text.split(/(?<=[.!?。]|다\.|요\.)\s+/).filter(Boolean);
+  let summary = "";
+
+  for (const sentence of sentences) {
+    if (summary.length >= 120) break;
+    summary = `${summary} ${sentence}`.trim();
+  }
+
+  const seed = summary.includes(primaryKeyword)
+    ? summary
+    : `${primaryKeyword}를 중심으로 ${summary}`;
+
+  return seed.replace(/\s+/g, " ").trim().slice(0, 155);
+}
+
+function getImageResult(type) {
+  return wpImageResultsData.find((result) => result.type === type) || null;
+}
+
+function setWpPublishStatus(message, type = "") {
+  if (!wpPublishStatus) return;
+
+  wpPublishStatus.textContent = message || "";
+  wpPublishStatus.classList.toggle("is-error", type === "error" && Boolean(message));
+  wpPublishStatus.classList.toggle("is-success", type === "success" && Boolean(message));
+}
+
+function buildWpDraftPayload() {
+  const markdown = markdownOutput.value.trim();
+  if (!markdown) return null;
+
+  const title = getMarkdownTitle(markdown) || extractCoverTitle();
+  const keywords = getActiveKeywords();
+  const slug = slugifyPostTitle(title, keywords);
+  const metaDescription = buildMetaDescription(markdown, keywords);
+  const category = getCurrentMenu().label;
+  const tags = keywords.slice(0, 8);
+  const focusKeyword = keywords[0] || (isJavaMode() ? "Java" : category);
+  const seoTitle = title.length <= 65 ? title : title.slice(0, 62).trimEnd() + "...";
+
+  return {
+    title,
+    seoTitle,
+    focusKeyword,
+    slug,
+    category,
+    tags,
+    metaDescription,
+    markdown: stripWordPressImagePrompt(markdown),
+    images: wpImageResultsData.map((result) => ({
+      type: result.type,
+      filename: getWpImageFilename(result.type),
+      dataUrl: result.url,
+      metadata: result.metadata || {},
+    })),
+  };
+}
+
+async function publishWpDraft() {
+  const payload = buildWpDraftPayload();
+
+  if (!payload) {
+    showToast("먼저 글을 생성해 주세요.");
+    return;
+  }
+
+  if (!payload.images.length) {
+    const shouldContinue = window.confirm("생성된 WP 이미지가 없습니다. 이미지 없이 임시글을 발행할까요?");
+    if (!shouldContinue) return;
+  }
+
+  publishDraftButton.disabled = true;
+  setWpPublishStatus("WordPress에 이미지와 임시글을 업로드하는 중입니다...");
+
+  try {
+    const response = await fetch("/api/wp-draft", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) throw new Error(data.error || `WordPress 임시글 발행 실패: HTTP ${response.status}`);
+
+    const linkText = data.link ? ` 보기: ${data.link}` : "";
+    const warningText = Array.isArray(data.warnings) && data.warnings.length
+      ? ` / 참고: ${data.warnings.join(" ")}`
+      : "";
+    setWpPublishStatus(`임시글 발행 완료: #${data.id}${linkText}${warningText}`, "success");
+    showToast("WordPress 임시글을 발행했습니다.");
+  } catch (error) {
+    const message = error.message || "WordPress 임시글 발행 중 오류가 발생했습니다.";
+    setWpPublishStatus(message, "error");
+    showToast(message);
+  } finally {
+    publishDraftButton.disabled = false;
+  }
+}
+
 function copyTextToClipboard(text, successMessage) {
   navigator.clipboard
     .writeText(text)
@@ -1182,6 +1366,7 @@ function clearOutputArea() {
   wpImageResultsData = [];
   renderWpImageResults();
   setWpImageStatus("");
+  setWpPublishStatus("");
   clearCoverImage();
 }
 
@@ -1376,22 +1561,47 @@ ${topicTitle}는 최근 ${menu.label} 분야에서 눈여겨볼 만한 주제입
 
 ## 핵심 키워드
 
-${keywordText.split(",").map((keyword) => `- ${keyword.trim()}`).filter((line) => line !== "-").join("\n") || "- 최신 기술 이슈"}
+${keywordText.split(",").map((keyword) => `- ${keyword.trim()}`).filter((line) => line !== "-").join("\n") || "- 최신 블로그 주제"}
 
 ## 이 주제가 중요한 이유
 
-최근 기술 환경은 빠르게 바뀌고 있습니다. 단순한 뉴스 소개에 그치지 않고, 이 변화가 사용자, 개발자, 기업 운영 방식에 어떤 영향을 주는지 함께 살펴볼 필요가 있습니다.
+최근 ${menu.label} 분야의 흐름은 빠르게 바뀌고 있습니다. 단순한 뉴스 소개에 그치지 않고, 이 변화가 독자에게 어떤 영향을 주는지 함께 살펴볼 필요가 있습니다.
 
 ## 주요 내용 정리
 
 - 현재 이슈의 배경과 등장 이유
-- 관련 기술이나 시장 변화의 핵심 포인트
+- 관련 흐름이나 시장 변화의 핵심 포인트
 - 실제 업무나 학습에 적용할 때 확인해야 할 점
 - 앞으로 이어질 가능성이 있는 변화
 
-## 실무 관점에서 볼 점
+## 활용 관점에서 볼 점
 
 이 주제를 블로그 콘텐츠로 다룰 때는 단순한 정보 전달보다 독자가 바로 판단할 수 있는 기준을 제시하는 것이 중요합니다. 무엇이 달라졌는지, 어떤 사람에게 영향이 큰지, 지금 확인해야 할 행동은 무엇인지 순서대로 정리하면 글의 활용도가 높아집니다.
+
+## 바로 확인할 체크리스트
+
+- 이 주제가 내 업무, 학습, 의사결정 목표와 직접 관련이 있는지 확인합니다.
+- 단순한 유행어가 아니라 실제 문제 해결이나 판단에 도움이 되는지 살펴봅니다.
+- 비용, 보안, 유지보수, 학습 난이도처럼 현실적인 조건을 함께 비교합니다.
+- 적용 전 작은 실험으로 효과를 검증할 수 있는지 확인합니다.
+
+## 주의할 점
+
+최신 이슈는 발표 내용만 보고 판단하면 과장된 결론에 도달하기 쉽습니다. 실제로는 독자의 상황, 목표, 기존 조건에 따라 결과가 크게 달라질 수 있습니다. 따라서 블로그 글에서는 장점뿐 아니라 한계와 확인해야 할 조건을 함께 정리하는 편이 독자에게 더 도움이 됩니다.
+
+## 자주 묻는 질문
+
+### 이 주제를 지금 바로 적용해야 하나요?
+
+모든 상황에서 바로 적용할 필요는 없습니다. 먼저 현재 문제와 연결되는 부분이 있는지 확인하고, 작은 범위에서 테스트한 뒤 확대하는 방식이 안전합니다.
+
+### 초보자는 무엇부터 보면 좋을까요?
+
+핵심 용어와 배경을 먼저 이해한 뒤, 실제 사례나 간단한 실습을 통해 흐름을 잡는 것이 좋습니다. 처음부터 세부 구현이나 복잡한 비교표에 매달리면 전체 맥락을 놓치기 쉽습니다.
+
+### 블로그 글로 다룰 때 가장 중요한 점은 무엇인가요?
+
+단순히 소식을 전달하는 것보다 독자가 어떤 판단을 할 수 있게 도와주는지가 중요합니다. 배경, 장단점, 적용 조건, 다음에 확인할 내용을 함께 제시하면 글의 가치가 높아집니다.
 
 ## 마무리 정리
 
@@ -1485,6 +1695,33 @@ ${buildConceptSummary(concepts)}
 
 객체 리스트 정렬에서 중요한 점은 "객체 전체를 비교하는 것이 아니라 어떤 값을 기준으로 비교할 것인지 정해야 한다"는 것입니다. 이 예제에서는 \`Product::getPrice\`를 사용해 가격을 꺼내고, \`Comparator.comparingInt()\`로 그 가격을 비교했습니다.
 
+## 초보자가 자주 헷갈리는 부분
+
+- \`sorted()\`는 원본 리스트를 직접 바꾸는 것이 아니라 정렬된 Stream 결과를 만듭니다.
+- 객체 리스트를 정렬할 때는 객체 자체가 아니라 비교 기준이 되는 필드를 정해야 합니다.
+- \`Product::getPrice\`는 \`product -> product.getPrice()\`와 비슷한 의미의 메서드 참조입니다.
+- 정렬 결과를 계속 사용하려면 \`collect(Collectors.toList())\`로 다시 리스트에 담아야 합니다.
+
+## 직접 연습해 볼 과제
+
+1. 가격 오름차순이 아니라 내림차순으로 정렬해 보세요.
+2. 가격이 같은 상품이 있을 때 이름순으로 한 번 더 정렬해 보세요.
+3. \`Product\`에 카테고리 필드를 추가하고 특정 카테고리만 필터링한 뒤 정렬해 보세요.
+
+## 자주 묻는 질문
+
+### sorted()를 쓰면 원본 리스트가 바뀌나요?
+
+아니요. Stream의 \`sorted()\`는 정렬된 흐름을 새로 만들 뿐 원본 리스트 자체를 직접 변경하지 않습니다. 원본 데이터를 바꾸고 싶다면 별도의 리스트에 담거나 \`List.sort()\` 같은 방법을 사용해야 합니다.
+
+### Comparator.comparingInt()는 언제 쓰나요?
+
+객체 안의 \`int\` 값을 기준으로 정렬할 때 사용합니다. 가격, 나이, 점수처럼 숫자 필드를 기준으로 정렬할 때 코드가 짧고 읽기 쉬워집니다.
+
+### 메서드 참조가 어렵다면 람다식으로 써도 되나요?
+
+네. \`Product::getPrice\`가 어렵다면 \`product -> product.getPrice()\`처럼 람다식으로 먼저 이해해도 됩니다. 두 방식 모두 Product 객체에서 가격 값을 꺼내 비교 기준으로 사용한다는 의미입니다.
+
 ## 마무리 정리
 
 ${buildWrapUpTable(concepts)}
@@ -1567,7 +1804,9 @@ async function generateWithAi(provider) {
     if (!response.ok) throw new Error(data.error || `AI 생성 요청 실패: HTTP ${response.status}`);
 
     markdownOutput.value = stripWordPressImagePrompt(data.markdown || "");
-    renderSeoReport(data.seoReport || auditSeoMarkdown(markdownOutput.value, keywordInput.value.trim()));
+    const seoResult = auditSeoMarkdown(markdownOutput.value, keywordInput.value.trim());
+    seoResult.revised = Boolean(data.seoReport?.revised);
+    renderSeoReport(seoResult);
     await generateGeneratedAssets();
     showToast(`${provider === "openai" ? "OpenAI" : "Ollama"}로 Markdown 글을 생성했습니다.`);
   } catch (error) {
@@ -1652,6 +1891,21 @@ function auditSeoMarkdown(markdown, keywordText) {
   const bodyWithoutCode = markdown.replace(/```[\s\S]*?```/g, "");
   const lowerBody = bodyWithoutCode.toLowerCase();
   const h2Count = (markdown.match(/^##\s+/gm) || []).length;
+  const metaDescription = buildMetaDescription(markdown, keywords);
+  const slug = slugifyPostTitle(title, keywords);
+  const textLength = stripMarkdownForDescription(markdown).length;
+  const faqCount = (markdown.match(/^###\s+/gm) || []).length;
+  const hasFaqSection = /##\s*(자주\s*묻는\s*질문|FAQ)/i.test(markdown);
+  const hasPracticalSection = /##\s*(실무|직접\s*연습|체크리스트|주의|적용|활용)/i.test(markdown);
+  const firstParagraph = bodyWithoutCode
+    .replace(/^#\s+.+$/m, "")
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .find((block) => block && !block.startsWith("#")) || "";
+  const imageAltReady = ["featured", "content", "contentSecondary"].every((type) => {
+    const result = getImageResult(type);
+    return Boolean(result?.metadata?.altText);
+  });
   const checks = [
     {
       label: isJavaMode() ? "제목에 Java와 핵심 키워드가 포함되어 있습니다." : "제목에 핵심 주제 또는 키워드가 포함되어 있습니다.",
@@ -1675,6 +1929,34 @@ function auditSeoMarkdown(markdown, keywordText) {
       label: "마무리 정리 표가 포함되어 있습니다.",
       passed: markdown.includes("|") && markdown.includes("---"),
     },
+    {
+      label: "메타 설명이 검색 결과에 쓰기 좋은 길이로 준비되어 있습니다.",
+      passed: metaDescription.length >= 80 && metaDescription.length <= 155,
+    },
+    {
+      label: "게시용 슬러그가 짧고 읽기 좋게 준비되어 있습니다.",
+      passed: slug.length >= 5 && slug.length <= 70,
+    },
+    {
+      label: "첫 설명 문단에 핵심 키워드가 반영되어 있습니다.",
+      passed: firstParagraph.toLowerCase().includes(primaryKeyword.toLowerCase().split(" ")[0]),
+    },
+    {
+      label: "대표 이미지와 본문 이미지 alt 텍스트가 준비되어 있습니다.",
+      passed: imageAltReady,
+    },
+    {
+      label: "본문이 얇은 콘텐츠로 보이지 않을 만큼 충분히 작성되어 있습니다.",
+      passed: textLength >= 1200,
+    },
+    {
+      label: "FAQ 섹션이 있어 독자의 추가 질문에 답합니다.",
+      passed: hasFaqSection && faqCount >= 3,
+    },
+    {
+      label: "실전 적용, 체크리스트, 주의점 중 하나 이상을 포함합니다.",
+      passed: hasPracticalSection,
+    },
   ];
 
   if (isJavaMode()) {
@@ -1690,6 +1972,13 @@ function auditSeoMarkdown(markdown, keywordText) {
     passed: passedCount === checks.length,
     score: Math.round((passedCount / checks.length) * 100),
     checks,
+    details: {
+      focusKeyword: primaryKeyword,
+      seoTitle: title.length <= 65 ? title : title.slice(0, 62).trimEnd() + "...",
+      metaDescription,
+      slug,
+      textLength,
+    },
     revised: false,
   };
 }
@@ -1700,12 +1989,23 @@ function renderSeoReport(report) {
   const statusClass = report.passed ? "pass" : "fail";
   const statusText = report.passed ? "통과" : "수정 필요";
   const revisedText = report.revised ? " / AI 자동 재수정 적용" : "";
+  const details = report.details || {};
+  const detailsHtml = details.focusKeyword ? `
+    <div class="seo-details">
+      <p><strong>포커스 키워드</strong> ${escapeHtml(details.focusKeyword)}</p>
+      <p><strong>SEO 제목</strong> ${escapeHtml(details.seoTitle || "")}</p>
+      <p><strong>메타 설명</strong> ${escapeHtml(details.metaDescription || "")}</p>
+      <p><strong>슬러그</strong> ${escapeHtml(details.slug || "")}</p>
+      <p><strong>본문 길이</strong> ${Number(details.textLength || 0).toLocaleString("ko-KR")}자</p>
+    </div>
+  ` : "";
   const items = (report.checks || [])
     .map((check) => `<li><span class="${check.passed ? "pass" : "fail"}">${check.passed ? "통과" : "미흡"}</span> ${escapeHtml(check.label)}</li>`)
     .join("");
 
   seoReport.innerHTML = `
     <strong>SEO 점검 결과: <span class="${statusClass}">${statusText}</span> (${report.score || 0}점${revisedText})</strong>
+    ${detailsHtml}
     <ul>${items}</ul>
   `;
   seoReport.classList.add("is-visible");
@@ -1820,6 +2120,7 @@ generateCoverButton.addEventListener("click", generateCoverImage);
 downloadCoverButton.addEventListener("click", downloadCoverImage);
 generateWpImagesButton.addEventListener("click", generateWordPressImages);
 downloadWpImagesButton.addEventListener("click", downloadAllWordPressImages);
+publishDraftButton.addEventListener("click", publishWpDraft);
 copyWpMetadataButton.addEventListener("click", () => {
   if (!wpImageResultsData.length) {
     showToast("복사할 WP 이미지 메타데이터가 없습니다.");
