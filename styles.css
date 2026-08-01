@@ -311,6 +311,10 @@ button:disabled {
   line-height: 1.45;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 .topic-search-form {
   display: grid;
   gap: 8px;
@@ -484,6 +488,10 @@ textarea {
   grid-template-columns: minmax(380px, 0.8fr) minmax(620px, 1.2fr);
   gap: 18px;
   align-items: start;
+}
+
+.output-grid.is-text-only {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .markdown-panel,

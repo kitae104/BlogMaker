@@ -192,6 +192,22 @@ const MENU_ITEMS = [
       { value: "comparison", label: "비교 분석형" },
     ],
   },
+  {
+    id: "existing-rewrite",
+    label: "기존 블로그 수정",
+    description: "SEO 통과용 재작성",
+    eyebrow: "Existing Post SEO Editor",
+    title: "기존 블로그 수정",
+    sourceTitle: "기존 글 붙여넣기",
+    sourceHint: "이미 블로그에 등록된 글을 그대로 붙여 넣으면 SEO 기준에 맞는 Markdown 글로 새롭게 재작성합니다.",
+    placeholder: "기존 블로그 제목과 본문을 그대로 붙여 넣으세요. 예: 2026년 바이브코딩 트렌드와 AI Agent의 결합...",
+    searchQuery: "",
+    tones: [
+      { value: "seo-rewrite", label: "SEO 재작성형" },
+      { value: "practical-edit", label: "실무 가이드 보강형" },
+      { value: "reader-friendly", label: "독자 친화형" },
+    ],
+  },
 ];
 
 const sourceInput = document.querySelector("#sourceInput");
@@ -237,6 +253,9 @@ const publishDraftButton = document.querySelector("#publishDraftButton");
 const wpImageStatus = document.querySelector("#wpImageStatus");
 const wpImageResults = document.querySelector("#wpImageResults");
 const wpPublishStatus = document.querySelector("#wpPublishStatus");
+const mediaPanel = document.querySelector(".media-panel");
+const outputGrid = document.querySelector(".output-grid");
+const outputTitle = document.querySelector(".output-toolbar h2");
 
 let lastAutoKeywords = keywordInput.value.trim();
 let generationTimer = null;
@@ -269,6 +288,10 @@ function getCurrentMenu() {
 
 function isJavaMode() {
   return currentMenuId === "java";
+}
+
+function isExistingRewriteMode() {
+  return currentMenuId === "existing-rewrite";
 }
 
 function renderMenu() {
@@ -305,8 +328,9 @@ function applyMenu(menuId, { reset = true } = {}) {
   sourceInput.placeholder = nextMenu.placeholder;
   sampleButton.hidden = !isJavaMode();
   fixCodeCheck.closest(".check-field").hidden = !isJavaMode();
-  topicPanel.hidden = isJavaMode();
+  topicPanel.hidden = isJavaMode() || isExistingRewriteMode();
   topicPanelTitle.textContent = `${nextMenu.label} 최근 이슈 주제`;
+  syncExistingRewriteUi();
 
   if (reset) {
     sourceInput.value = "";
@@ -316,7 +340,7 @@ function applyMenu(menuId, { reset = true } = {}) {
     if (topicSearchInput) topicSearchInput.value = "";
   }
 
-  if (!isJavaMode()) {
+  if (!isJavaMode() && !isExistingRewriteMode()) {
     loadTrendingTopics(nextMenu.id);
   } else {
     topicSuggestions.innerHTML = "";
@@ -333,6 +357,39 @@ function extractGenericKeywords(value, limit = 7) {
     .filter((word) => word.length >= 2 && !stopWords.has(word.toLowerCase()));
 
   return [...new Set(words)].slice(0, limit).join(", ");
+}
+
+function syncExistingRewriteUi() {
+  const existingMode = isExistingRewriteMode();
+
+  [generateCoverButton, downloadCoverButton, generateWpImagesButton, downloadWpImagesButton, copyWpMetadataButton].forEach((button) => {
+    if (button) button.hidden = existingMode;
+  });
+
+  if (mediaPanel) mediaPanel.hidden = existingMode;
+  if (outputGrid) outputGrid.classList.toggle("is-text-only", existingMode);
+  if (outputTitle) outputTitle.textContent = existingMode ? "수정된 Markdown 글" : "글, 이미지, 메타데이터";
+  if (publishDraftButton) publishDraftButton.textContent = existingMode ? "수정글 발행" : "WP 임시글 발행";
+  if (copyButton) copyButton.textContent = existingMode ? "생성글 복사" : "Markdown 복사";
+}
+
+function extractExistingPostKeywords(value) {
+  const text = String(value || "");
+  const phraseCandidates = [
+    "바이브코딩",
+    "AI Agent",
+    "AI 에이전트",
+    "Agent-of-Agents",
+    "퍼스널 AI Agent",
+    "워드프레스 SEO",
+    "블로그 SEO",
+  ].filter((keyword) => text.toLowerCase().includes(keyword.toLowerCase()));
+  const genericKeywords = extractGenericKeywords(text, 12)
+    .split(",")
+    .map((keyword) => keyword.trim())
+    .filter((keyword) => keyword && !/^\d{4}년?$/.test(keyword));
+
+  return [...new Set([...phraseCandidates, ...genericKeywords])].slice(0, 7).join(", ");
 }
 
 function setTopicStatus(message) {
@@ -788,6 +845,7 @@ async function generateOllamaCoverBackground(title) {
 }
 
 async function generateCoverImage() {
+  if (isExistingRewriteMode()) return;
   if (!coverCanvas) return;
 
   const title = extractCoverTitle();
@@ -987,6 +1045,8 @@ async function processWordPressImage(imageDataUrl, targetWidth, targetHeight, ov
 }
 
 async function generateWordPressImages() {
+  if (isExistingRewriteMode()) return;
+
   const title = extractWpImageTitle();
   const content = extractWpImageContent();
 
@@ -1252,6 +1312,7 @@ function buildWpDraftPayload() {
 
   return {
     title,
+    originalTitle: isExistingRewriteMode() ? getExistingPostTitle(sourceInput.value) : "",
     seoTitle,
     focusKeyword,
     slug,
@@ -1259,7 +1320,7 @@ function buildWpDraftPayload() {
     tags,
     metaDescription,
     markdown: stripWordPressImagePrompt(markdown),
-    images: wpImageResultsData.map((result) => ({
+    images: isExistingRewriteMode() ? [] : wpImageResultsData.map((result) => ({
       type: result.type,
       filename: getWpImageFilename(result.type),
       dataUrl: result.url,
@@ -1268,11 +1329,45 @@ function buildWpDraftPayload() {
   };
 }
 
+async function publishExistingPostUpdate(payload) {
+  publishDraftButton.disabled = true;
+  setWpPublishStatus("동일 제목의 기존 WordPress 글을 찾고 수정하는 중입니다...");
+
+  try {
+    const response = await fetch("/api/wp-existing-post", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) throw new Error(data.error || `WordPress 수정글 발행 실패: HTTP ${response.status}`);
+
+    const linkText = data.link ? ` 보기: ${data.link}` : "";
+    const warningText = Array.isArray(data.warnings) && data.warnings.length
+      ? ` / 참고: ${data.warnings.join(" ")}`
+      : "";
+    setWpPublishStatus(`수정글 발행 완료: #${data.id}${linkText}${warningText}`, "success");
+    showToast("기존 WordPress 글을 수정했습니다.");
+  } catch (error) {
+    const message = `${error.message || "WordPress 수정글 발행 중 오류가 발생했습니다."} 생성글 복사 버튼으로 내용을 복사해 수동 반영할 수 있습니다.`;
+    setWpPublishStatus(message, "error");
+    showToast(error.message || "WordPress 수정글 발행 중 오류가 발생했습니다.");
+  } finally {
+    publishDraftButton.disabled = false;
+  }
+}
+
 async function publishWpDraft() {
   const payload = buildWpDraftPayload();
 
   if (!payload) {
     showToast("먼저 글을 생성해 주세요.");
+    return;
+  }
+
+  if (isExistingRewriteMode()) {
+    await publishExistingPostUpdate(payload);
     return;
   }
 
@@ -1549,6 +1644,121 @@ function buildIntro(concepts, tone) {
   return `Java를 공부하다 보면 숫자나 문자열뿐 아니라 객체 리스트를 정렬해야 하는 경우가 자주 있습니다. 이번 글에서는 ${keywordText}를 사용해 Product 객체 리스트를 가격 오름차순으로 정렬하는 방법을 초보자도 이해하기 쉽게 정리합니다.`;
 }
 
+function getExistingPostTitle(raw) {
+  return String(raw || "")
+    .split("\n")
+    .map((line) => line.replace(/^#+\s*/, "").trim())
+    .find(Boolean) || "기존 블로그 글 SEO 수정";
+}
+
+function buildExistingSeoTitle(title, keywords) {
+  const keywordList = String(keywords || "")
+    .split(",")
+    .map((keyword) => keyword.trim())
+    .filter(Boolean);
+  const primaryKeyword = keywordList[0] || extractGenericKeywords(title, 1) || "블로그 SEO";
+  const cleanTitle = String(title || "").replace(/[—–-]\s*실무\s*가이드/i, "").trim();
+  const candidate = cleanTitle.includes(primaryKeyword)
+    ? `${cleanTitle}: 실무 적용과 SEO 체크리스트`
+    : `${primaryKeyword} 실무 가이드: ${cleanTitle}`;
+
+  return candidate.length <= 70 ? candidate : candidate.slice(0, 67).trimEnd() + "...";
+}
+
+function generateExistingRewriteTemplateMarkdown(raw, keywords) {
+  const title = getExistingPostTitle(raw);
+  const keywordText = keywords || extractGenericKeywords(raw, 7);
+  const keywordList = keywordText
+    .split(",")
+    .map((keyword) => keyword.trim())
+    .filter(Boolean);
+  const primaryKeyword = keywordList[0] || "블로그 SEO";
+  const secondaryKeyword = keywordList[1] || "실무 적용";
+  const seoTitle = buildExistingSeoTitle(title, keywordText);
+  const sourceSummary = stripMarkdownForDescription(raw).slice(0, 220);
+
+  return `# ${seoTitle}
+
+${primaryKeyword}를 주제로 기존 블로그 글을 다시 다듬을 때는 단순히 문장을 길게 늘리는 것보다 독자가 바로 얻어갈 답을 분명히 제시하는 것이 중요합니다. 이 글에서는 원문의 핵심 논지를 유지하면서 ${secondaryKeyword}, 적용 절차, 주의점, 조직 차원의 체크포인트를 함께 정리합니다.
+
+## 원문에서 유지할 핵심 메시지
+
+기존 글의 중심 내용은 다음 흐름으로 정리할 수 있습니다.
+
+- 주제의 배경과 최근 변화
+- 실무에서 바로 확인해야 할 적용 사례
+- 보안, 거버넌스, 교육처럼 조직이 함께 준비해야 할 조건
+- 개인과 팀이 다음 단계로 실행할 수 있는 체크리스트
+
+원문 요약: ${sourceSummary || "기존 글의 핵심 주제를 바탕으로 SEO 친화적인 구조를 다시 구성합니다."}
+
+## ${primaryKeyword}가 중요한 이유
+
+${primaryKeyword}는 단순한 유행어가 아니라 실제 업무 방식과 학습 방식에 영향을 주는 주제입니다. 독자는 이 글을 통해 개념 정의만 확인하는 것이 아니라, 어떤 상황에서 적용해야 하는지와 도입 전에 무엇을 점검해야 하는지를 알고 싶어 합니다.
+
+특히 ${secondaryKeyword} 관점에서는 기술 자체보다 운영 방식이 더 중요합니다. 도구를 도입해도 권한, 검증, 책임 소재가 정리되지 않으면 생산성 향상보다 혼란이 커질 수 있습니다. 따라서 본문은 트렌드 설명, 실무 적용, 위험 관리, 실행 체크리스트 순서로 읽히도록 구성하는 것이 좋습니다.
+
+## 핵심 트렌드 정리
+
+최근 흐름은 개인화, 자동화, 거버넌스라는 세 가지 축으로 나눌 수 있습니다. 개인화는 사용자의 업무 맥락에 맞춘 추천과 자동화를 의미하고, 자동화는 반복 작업을 줄여 더 중요한 판단에 시간을 쓰게 만드는 방향입니다. 거버넌스는 자동화가 늘어날수록 더 중요해지는 승인, 감사, 보안 기준입니다.
+
+| 구분 | 정리 |
+|---|---|
+| 개인화 | 사용자 환경과 업무 맥락에 맞춘 지원이 중요합니다. |
+| 자동화 | 반복 작업은 줄이고 검증과 판단에 집중해야 합니다. |
+| 거버넌스 | 권한, 기록, 책임 소재를 명확히 해야 합니다. |
+
+## 실무 적용 방법
+
+실무에서는 한 번에 모든 것을 바꾸기보다 작은 범위에서 검증하는 방식이 안정적입니다. 예를 들어 개인 업무 보조, 문서 초안 작성, 테스트 자동화처럼 실패 비용이 낮고 효과 측정이 쉬운 영역부터 시작할 수 있습니다.
+
+적용 순서는 다음처럼 가져가는 것이 좋습니다.
+
+1. 현재 가장 반복적인 업무를 목록화합니다.
+2. 민감 데이터가 포함되는지 먼저 분류합니다.
+3. 작은 실험 범위를 정하고 결과를 기록합니다.
+4. 검증 기준을 통과한 작업만 자동화 범위를 넓힙니다.
+5. 팀 표준 문서와 승인 흐름을 함께 업데이트합니다.
+
+## 체크리스트
+
+- ${primaryKeyword}가 실제 독자의 문제와 연결되어 있는지 확인합니다.
+- 첫 문단에서 글의 결론과 독자가 얻을 내용을 분명히 제시합니다.
+- 각 H2 섹션이 검색 의도에 맞는 질문이나 답변 형태로 구성되어 있는지 점검합니다.
+- 본문 중간에 ${keywordList.slice(0, 3).join(", ") || primaryKeyword} 키워드가 자연스럽게 반복되는지 확인합니다.
+- 마지막에는 표 형태로 핵심 내용을 다시 정리합니다.
+
+## 주의할 점
+
+SEO를 맞추기 위해 같은 키워드를 반복해서 나열하면 오히려 글의 품질이 낮아 보일 수 있습니다. 중요한 것은 ${primaryKeyword}라는 표현을 문맥 안에서 자연스럽게 사용하고, 독자가 실제로 판단할 수 있는 기준을 충분히 제공하는 것입니다.
+
+또한 기존 글을 수정할 때는 원문을 그대로 복사해 붙이는 방식보다 구조를 다시 잡는 편이 좋습니다. 제목, 첫 문단, H2 제목, FAQ, 요약 표를 새로 구성하면 검색엔진과 독자 모두에게 글의 목적이 더 선명하게 전달됩니다.
+
+## 자주 묻는 질문
+
+### 기존 글을 완전히 새 글처럼 바꿔야 하나요?
+
+반드시 모든 내용을 바꿀 필요는 없습니다. 다만 제목, 첫 문단, 섹션 구조, FAQ, 마무리 표처럼 SEO와 독자 경험에 직접 영향을 주는 부분은 새롭게 정리하는 것이 좋습니다.
+
+### 키워드는 몇 번 반복하는 것이 적절한가요?
+
+정해진 횟수보다 자연스러움이 중요합니다. 제목, 첫 문단, 중간 섹션, 마무리 정리 안에 핵심 키워드가 들어가면 대부분의 블로그 글에서는 충분합니다.
+
+### 기존 블로그의 빨간 SEO 항목은 어떻게 줄일 수 있나요?
+
+제목 길이, 첫 문단의 키워드 포함, H2 구조, 본문 길이, FAQ, 마무리 표를 먼저 확인하세요. 이 항목들은 글의 구조와 내용만 수정해도 개선되는 경우가 많습니다.
+
+## 마무리 정리
+
+| 항목 | 정리 |
+|---|---|
+| 포커스 키워드 | ${primaryKeyword} |
+| 보조 키워드 | ${keywordList.slice(1, 5).join(", ") || secondaryKeyword} |
+| 수정 방향 | 원문 논지를 유지하되 제목, 첫 문단, H2, FAQ, 표를 SEO 기준에 맞게 재구성 |
+| 실무 포인트 | 적용 방법, 체크리스트, 주의점을 독자가 바로 사용할 수 있게 제시 |
+`;
+}
+
 function generateGenericTemplateMarkdown(raw, keywords) {
   const menu = getCurrentMenu();
   const topicTitle = raw.match(/\[주제\]\s*(.+)/)?.[1]?.trim() || raw.split("\n")[0]?.trim() || `${menu.label} 블로그 주제`;
@@ -1615,6 +1825,11 @@ ${keywordText.split(",").map((keyword) => `- ${keyword.trim()}`).filter((line) =
 }
 
 async function generateGeneratedAssets() {
+  if (isExistingRewriteMode()) {
+    refreshSeoReport();
+    return;
+  }
+
   const jobs = [];
 
   if (autoCoverCheck.checked) jobs.push(generateCoverImage());
@@ -1622,6 +1837,7 @@ async function generateGeneratedAssets() {
 
   if (jobs.length) {
     await Promise.allSettled(jobs);
+    refreshSeoReport();
   }
 }
 
@@ -1739,6 +1955,23 @@ async function handleGenerateClick() {
 
   if (provider === "template") {
     if (isJavaMode()) await generateMarkdown();
+    else if (isExistingRewriteMode()) {
+      const raw = sourceInput.value.trim();
+      if (!raw) {
+        showToast("먼저 기존 블로그 글을 붙여 넣어 주세요.");
+        sourceInput.focus();
+        return;
+      }
+      const keywords = keywordInput.value.trim() || extractExistingPostKeywords(raw);
+      if (!keywordInput.value.trim()) {
+        keywordInput.value = keywords;
+        lastAutoKeywords = keywords;
+      }
+      markdownOutput.value = generateExistingRewriteTemplateMarkdown(raw, keywords);
+      renderSeoReport(auditSeoMarkdown(markdownOutput.value, keywords));
+      await generateGeneratedAssets();
+      showToast("기존 블로그 글을 SEO용 Markdown으로 재작성했습니다.");
+    }
     else {
       const raw = sourceInput.value.trim();
       if (!raw) {
@@ -1769,7 +2002,7 @@ async function generateWithAi(provider) {
 
   const keywords = isJavaMode()
     ? syncKeywordsFromSource(raw)
-    : (keywordInput.value.trim() || extractGenericKeywords(raw));
+    : (keywordInput.value.trim() || (isExistingRewriteMode() ? extractExistingPostKeywords(raw) : extractGenericKeywords(raw)));
   if (!isJavaMode() && !keywordInput.value.trim()) {
     keywordInput.value = keywords;
     lastAutoKeywords = keywords;
@@ -1779,7 +2012,7 @@ async function generateWithAi(provider) {
     input: raw,
     keywords,
     tone: toneSelect.options[toneSelect.selectedIndex]?.textContent || toneSelect.value,
-    mode: isJavaMode() ? "java" : "generic",
+    mode: isJavaMode() ? "java" : (isExistingRewriteMode() ? "existing-rewrite" : "generic"),
     categoryId: currentMenuId,
     categoryLabel: getCurrentMenu().label,
     selectedTopic,
@@ -1808,7 +2041,9 @@ async function generateWithAi(provider) {
     seoResult.revised = Boolean(data.seoReport?.revised);
     renderSeoReport(seoResult);
     await generateGeneratedAssets();
-    showToast(`${provider === "openai" ? "OpenAI" : "Ollama"}로 Markdown 글을 생성했습니다.`);
+    showToast(isExistingRewriteMode()
+      ? `${provider === "openai" ? "OpenAI" : "Ollama"}로 기존 블로그 글을 SEO용 Markdown으로 재작성했습니다.`
+      : `${provider === "openai" ? "OpenAI" : "Ollama"}로 Markdown 글을 생성했습니다.`);
   } catch (error) {
     showToast(error.message || "AI 생성 중 오류가 발생했습니다.");
   } finally {
@@ -1906,6 +2141,7 @@ function auditSeoMarkdown(markdown, keywordText) {
     const result = getImageResult(type);
     return Boolean(result?.metadata?.altText);
   });
+  const imageSeoReady = !wpImageResultsData.length || imageAltReady;
   const checks = [
     {
       label: isJavaMode() ? "제목에 Java와 핵심 키워드가 포함되어 있습니다." : "제목에 핵심 주제 또는 키워드가 포함되어 있습니다.",
@@ -1923,7 +2159,7 @@ function auditSeoMarkdown(markdown, keywordText) {
     },
     {
       label: "H2 섹션 구조가 워드프레스 글에 맞게 구성되어 있습니다.",
-      passed: h2Count >= (isJavaMode() ? 7 : 4),
+      passed: h2Count >= 7,
     },
     {
       label: "마무리 정리 표가 포함되어 있습니다.",
@@ -1942,8 +2178,8 @@ function auditSeoMarkdown(markdown, keywordText) {
       passed: firstParagraph.toLowerCase().includes(primaryKeyword.toLowerCase().split(" ")[0]),
     },
     {
-      label: "대표 이미지와 본문 이미지 alt 텍스트가 준비되어 있습니다.",
-      passed: imageAltReady,
+      label: "이미지 생성 결과가 있으면 alt 텍스트가 준비되어 있습니다.",
+      passed: imageSeoReady,
     },
     {
       label: "본문이 얇은 콘텐츠로 보이지 않을 만큼 충분히 작성되어 있습니다.",
@@ -2045,7 +2281,7 @@ function downloadMarkdown() {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = "java-blog-post.md";
+  link.download = isExistingRewriteMode() ? "seo-rewritten-blog-post.md" : "java-blog-post.md";
   document.body.appendChild(link);
   link.click();
   link.remove();

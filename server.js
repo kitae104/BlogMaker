@@ -39,6 +39,11 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (req.method === "POST" && req.url === "/api/wp-existing-post") {
+      await handleWordPressExistingPost(req, res);
+      return;
+    }
+
     if (req.method === "GET" && req.url === "/api/ollama-image-models") {
       await handleOllamaImageModels(req, res);
       return;
@@ -84,9 +89,11 @@ async function handleGenerate(req, res) {
   let seoReport = auditSeoMarkdown(markdown, body);
 
   if (body.seoAutoRefine !== false && !seoReport.passed) {
-    const refineMessages = body.mode === "generic"
-      ? buildGenericSeoRefineMessages(body, markdown, seoReport)
-      : buildSeoRefineMessages(body, markdown, seoReport);
+    const refineMessages = body.mode === "existing-rewrite"
+      ? buildExistingSeoRefineMessages(body, markdown, seoReport)
+      : body.mode === "generic"
+        ? buildGenericSeoRefineMessages(body, markdown, seoReport)
+        : buildSeoRefineMessages(body, markdown, seoReport);
     markdown = stripWordPressImagePrompt(await generateWithProvider(generatorOptions, refineMessages));
     seoReport = auditSeoMarkdown(markdown, body);
     seoReport.revised = true;
@@ -494,6 +501,48 @@ async function handleWordPressDraft(req, res) {
   });
 }
 
+async function handleWordPressExistingPost(req, res) {
+  const body = await readJsonBody(req);
+  const title = String(body.title || "").trim();
+  const originalTitle = String(body.originalTitle || "").trim();
+  const markdown = String(body.markdown || "").trim();
+
+  if (!title || !markdown) {
+    sendJson(res, 400, { error: "수정할 제목과 Markdown 본문이 필요합니다." });
+    return;
+  }
+
+  const config = getWordPressConfig();
+  const warnings = [];
+  const post = await findWordPressPostByExactTitle(config, [originalTitle, title].filter(Boolean));
+
+  if (!post) {
+    sendJson(res, 404, { error: "동일한 제목의 기존 WordPress 글을 찾지 못했습니다." });
+    return;
+  }
+
+  const existingRawContent = post.content?.raw || "";
+  const content = buildWordPressUpdateContent(markdown, existingRawContent);
+  const postPayload = removeUndefinedFields({
+    title,
+    content,
+    excerpt: String(body.metaDescription || "").trim() || undefined,
+  });
+  const updatedPost = await wordpressRequest(config, "POST", `/posts/${post.id}`, {
+    json: postPayload,
+  });
+
+  await tryUpdateSeoPluginMeta(config, post.id, body, warnings);
+
+  sendJson(res, 200, {
+    id: updatedPost.id,
+    status: updatedPost.status,
+    link: updatedPost.link,
+    matchedTitle: normalizeComparableTitle(post.title?.raw || post.title?.rendered || ""),
+    warnings,
+  });
+}
+
 async function tryUpdateSeoPluginMeta(config, postId, body, warnings) {
   const focusKeyword = String(body.focusKeyword || "").trim();
   const seoTitle = String(body.seoTitle || body.title || "").trim();
@@ -573,6 +622,51 @@ async function wordpressRequest(config, method, endpoint, options = {}) {
   }
 
   return data;
+}
+
+async function findWordPressPostByExactTitle(config, titles) {
+  const normalizedTitles = [...new Set(titles.map(normalizeComparableTitle).filter(Boolean))];
+  if (!normalizedTitles.length) return null;
+
+  for (const title of normalizedTitles) {
+    const posts = await wordpressRequest(
+      config,
+      "GET",
+      `/posts?search=${encodeURIComponent(title)}&status=any&context=edit&per_page=20`,
+    );
+    const exact = Array.isArray(posts)
+      ? posts.find((post) => {
+          const rawTitle = normalizeComparableTitle(post.title?.raw || "");
+          const renderedTitle = normalizeComparableTitle(post.title?.rendered || "");
+          return rawTitle === title || renderedTitle === title;
+        })
+      : null;
+
+    if (exact) return exact;
+  }
+
+  return null;
+}
+
+function normalizeComparableTitle(value) {
+  return decodeHtmlEntities(stripHtml(String(value || "")))
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function stripHtml(value) {
+  return String(value || "").replace(/<[^>]+>/g, " ");
+}
+
+function decodeHtmlEntities(value) {
+  return String(value || "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, "\"")
+    .replace(/&#039;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
 }
 
 async function uploadWordPressMedia(config, image) {
@@ -667,6 +761,49 @@ function buildWordPressDraftContent(markdown, uploadedImages) {
     .replace("{{WP_CONTENT_IMAGE_2}}", buildWordPressImageHtml(summaryImage))
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+function buildWordPressUpdateContent(markdown, existingRawContent = "") {
+  const preservedImages = extractWordPressImageBlocks(existingRawContent);
+  let content = stripFirstMarkdownHeading(stripWordPressImagePrompt(markdown).trim());
+  content = markdownToWordPressHtml(content);
+
+  if (preservedImages[0]) {
+    content = insertHtmlAfterFirstParagraph(content, preservedImages[0]);
+  }
+
+  if (preservedImages[1]) {
+    content = insertHtmlBeforeWrapUp(content, preservedImages[1]);
+  }
+
+  if (preservedImages.length > 2) {
+    content = `${content.trim()}\n\n${preservedImages.slice(2).join("\n\n")}`;
+  }
+
+  return content.replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function extractWordPressImageBlocks(content) {
+  const blocks = String(content || "").match(/<!--\s+wp:image[\s\S]*?<!--\s+\/wp:image\s+-->/g) || [];
+  return [...new Set(blocks.map((block) => block.trim()).filter(Boolean))];
+}
+
+function insertHtmlAfterFirstParagraph(content, block) {
+  const paragraphRegex = /(<!--\s+\/wp:paragraph\s+-->)/;
+  if (paragraphRegex.test(content)) {
+    return content.replace(paragraphRegex, `$1\n\n${block}`);
+  }
+
+  return `${block}\n\n${content}`;
+}
+
+function insertHtmlBeforeWrapUp(content, block) {
+  const wrapUpRegex = /(<!--\s+wp:heading[\s\S]*?<h2[^>]*>(?:마무리(?:\s*정리)?|정리|결론)<\/h2>[\s\S]*?<!--\s+\/wp:heading\s+-->)/;
+  if (wrapUpRegex.test(content)) {
+    return content.replace(wrapUpRegex, `${block}\n\n$1`);
+  }
+
+  return `${content.trim()}\n\n${block}`;
 }
 
 function insertMarkdownAfterIntro(markdown, block) {
@@ -1087,6 +1224,50 @@ ${markdown}`,
   ];
 }
 
+function buildExistingSeoRefineMessages(body, markdown, seoReport) {
+  const failedChecks = seoReport.checks
+    .filter((check) => !check.passed)
+    .map((check) => `- ${check.label}`)
+    .join("\n");
+
+  return [
+    {
+      role: "system",
+      content: `당신은 한국어 워드프레스 블로그 SEO 리라이트 전문 편집자입니다.
+
+역할:
+- 기존 블로그 글의 주제, 논지, 핵심 사례를 유지하면서 SEO 점검 실패 항목을 보완합니다.
+- 원문을 그대로 복사하지 않고 새 문장으로 다시 씁니다.
+- 검색엔진보다 독자에게 실제로 도움이 되는 설명, 체크리스트, FAQ를 보강합니다.
+- Markdown 본문만 출력합니다.
+- 이미지 프롬프트 섹션은 작성하지 않습니다.`,
+    },
+    {
+      role: "user",
+      content: `아래 기존 블로그 수정 결과가 SEO 점검에서 일부 기준을 통과하지 못했습니다.
+
+핵심 키워드: ${body.keywords || body.categoryLabel || "기존 블로그 SEO 수정"}
+
+미통과 항목:
+${failedChecks || "- 제목, 키워드, H2 구조, FAQ, 마무리 표를 전반적으로 개선해야 합니다."}
+
+재수정 기준:
+- 제목은 25~70자 사이로 작성하고 핵심 키워드 1개 이상을 포함합니다.
+- 첫 문단에 포커스 키워드를 자연스럽게 포함하고, 독자가 얻을 내용을 분명히 제시합니다.
+- H2 섹션을 7개 이상 유지합니다.
+- 본문 중간에 핵심 키워드를 과하지 않게 반복합니다.
+- "실무 적용 방법", "체크리스트", "주의할 점" 섹션을 포함합니다.
+- "자주 묻는 질문" H2 섹션을 만들고 질문 3개 이상에 답합니다.
+- 마지막에는 Markdown 표 형태의 "마무리 정리"를 포함합니다.
+- 본문이 짧으면 원문 주제에 맞는 설명과 사례를 추가해 한국어 기준 1,500자 이상으로 보완합니다.
+- 원문 문장을 그대로 복사하지 말고 자연스럽게 새로 작성합니다.
+
+현재 Markdown:
+${markdown}`,
+    },
+  ];
+}
+
 function buildSeoRefineMessages(body, markdown, seoReport) {
   const failedChecks = seoReport.checks
     .filter((check) => !check.passed)
@@ -1134,7 +1315,7 @@ ${markdown}`,
 }
 
 function auditSeoMarkdown(markdown, body) {
-  if (body.mode === "generic") {
+  if (body.mode === "generic" || body.mode === "existing-rewrite") {
     return auditGenericSeoMarkdown(markdown, body);
   }
 
@@ -1263,6 +1444,47 @@ function auditGenericSeoMarkdown(markdown, body) {
   };
 }
 
+function buildExistingBlogRewriteMessages(body) {
+  const keywords = String(body.keywords || "").trim();
+  const tone = String(body.tone || "SEO 재작성형").trim();
+
+  return [
+    {
+      role: "system",
+      content: `당신은 한국어 워드프레스 블로그 SEO 리라이트 전문 에디터입니다.
+
+역할:
+- 사용자가 붙여 넣은 기존 블로그 글을 바탕으로 워드프레스에 바로 붙여 넣을 Markdown 글을 새롭게 작성합니다.
+- 원문의 주제, 핵심 주장, 실무 예시는 유지하되 문장과 구조는 새로 구성합니다.
+- SEO 플러그인에서 빨간 항목이 남기 쉬운 제목, 첫 문단, 본문 길이, H2 구조, FAQ, 마무리 표를 적극적으로 보완합니다.
+- 단순 요약문이나 키워드 나열을 피하고 독자가 실제로 실행할 수 있는 판단 기준을 제공합니다.
+- Markdown 본문만 출력합니다. 안내문, 사과문, 평가표, 이미지 프롬프트 섹션은 출력하지 않습니다.`,
+    },
+    {
+      role: "user",
+      content: `아래 기존 블로그 글을 SEO 기준에 맞는 새 Markdown 글로 재작성해 주세요.
+
+작성 톤: ${tone}
+핵심 키워드: ${keywords || "기존 블로그 SEO 수정, 블로그 리라이트, 워드프레스 SEO"}
+
+작성 규칙:
+- 제목은 25~70자 사이로 작성하고 핵심 키워드 1개 이상을 포함합니다.
+- 첫 문단 2~3문장 안에 포커스 키워드를 자연스럽게 포함하고, 독자가 이 글에서 얻는 답을 분명히 제시합니다.
+- H2 섹션을 7개 이상 사용합니다.
+- 원문 주제의 핵심 흐름을 유지하되 문장은 완전히 새롭게 작성합니다.
+- 본문 중간에 핵심 키워드를 자연스럽게 반복하되 과도하게 나열하지 않습니다.
+- "실무 적용 방법", "체크리스트", "주의할 점"을 각각 별도 H2 섹션으로 포함합니다.
+- "자주 묻는 질문" H2 섹션을 만들고 질문 3개 이상과 구체적인 답변을 작성합니다.
+- 마지막에는 "| 항목 | 정리 |" 형태의 마무리 정리 표를 포함합니다.
+- 본문은 한국어 기준 최소 1,500자 이상으로 충분히 작성합니다.
+- 워드프레스 대표 이미지 프롬프트 섹션은 작성하지 않습니다.
+
+기존 블로그 글:
+${body.input}`,
+    },
+  ];
+}
+
 function buildGenericBlogMessages(body) {
   const categoryLabel = String(body.categoryLabel || "IT 이야기").trim();
   const keywords = String(body.keywords || "").trim();
@@ -1318,6 +1540,10 @@ ${body.input}
 }
 
 function buildMessages(body) {
+  if (body.mode === "existing-rewrite") {
+    return buildExistingBlogRewriteMessages(body);
+  }
+
   if (body.mode === "generic") {
     return buildGenericBlogMessages(body);
   }
