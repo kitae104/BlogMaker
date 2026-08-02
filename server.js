@@ -7,6 +7,7 @@ const rootDir = __dirname;
 loadDotEnv(path.join(rootDir, ".env"));
 
 const port = Number(process.env.PORT || 4173);
+const host = process.env.HOST || "0.0.0.0";
 
 const contentTypes = {
   ".html": "text/html; charset=utf-8",
@@ -65,8 +66,8 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(port, "127.0.0.1", () => {
-  console.log(`BlogMaker server running at http://127.0.0.1:${port}/`);
+server.listen(port, host, () => {
+  console.log(`BlogMaker server running at http://${host}:${port}/`);
 });
 
 async function handleGenerate(req, res) {
