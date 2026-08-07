@@ -783,6 +783,26 @@ function wrapCanvasText(ctx, text, maxWidth, maxLines) {
   return clipped;
 }
 
+let koreanFontLoadPromise = null;
+
+function ensureKoreanFontLoaded() {
+  if (!koreanFontLoadPromise) {
+    koreanFontLoadPromise = (async () => {
+      if (!("fonts" in document)) return;
+      try {
+        await Promise.all([
+          document.fonts.load('800 82px "Noto Sans KR"'),
+          document.fonts.load('800 68px "Noto Sans KR"'),
+        ]);
+        await document.fonts.ready;
+      } catch (error) {
+        // Noto Sans KR failed to load; canvas falls back to a system Korean font.
+      }
+    })();
+  }
+  return koreanFontLoadPromise;
+}
+
 function drawCoverTitle(ctx, title) {
   const width = coverCanvas.width;
   const height = coverCanvas.height;
@@ -858,6 +878,8 @@ async function generateCoverImage() {
   setCoverStatus(useOllama ? "Ollama로 배경 생성 중입니다..." : "무료 로컬 템플릿으로 대표이미지를 생성했습니다.");
 
   try {
+    await ensureKoreanFontLoaded();
+
     if (useOllama) {
       const dataUrl = await generateOllamaCoverBackground(title);
       const image = await loadImage(dataUrl);
@@ -1069,6 +1091,8 @@ async function generateWordPressImages() {
     const data = await response.json().catch(() => ({}));
 
     if (!response.ok) throw new Error(data.error || `WordPress 이미지 생성 실패: HTTP ${response.status}`);
+
+    await ensureKoreanFontLoaded();
 
     const processed = [];
     for (const image of data.images || []) {

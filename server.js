@@ -1049,10 +1049,15 @@ Return the result as a JSON object with the following structure:
 }
 
 Metadata writing rules:
-- Write metadata in Korean.
+- Write metadata (altText, title, caption, description) in Korean.
 - Keep each image metadata distinct and context-aware.
 - Make alt text and description clear for accessibility and SEO.
-- Image prompts must avoid embedded text, letters, logos, watermarks, and UI screenshots unless the post content explicitly requires them.`;
+- Image prompts must be written entirely in English.
+- Image prompts must NOT include the blog title, any Korean words, or any quoted text to render inside the image.
+- Image prompts must NOT mention brand or product names (e.g. "WordPress"), UI elements, or phrases like "title", "caption", or "label" — image models tend to render such words as garbled on-image text.
+- Image prompts must NOT describe code snippets, screens, monitors, papers, books, signs, or any other object with visible writing on it — image models render such writing as garbled, illegible characters. Use abstract shapes, icons, or objects instead to represent those ideas.
+- Image prompts must NOT describe diagrams, flowcharts, node/network graphs, UI mockups, wireframes, dashboards, or icons labeled with specific concept names (e.g. do not write "icon representing filter, map, reduce" or "nodes labeled with each step") — these layouts strongly trigger fake garbled text labels even when told not to render text. Prefer purely abstract gradients, geometric shapes, light/motion trails, metaphorical objects, or photorealistic scenes with no labeled parts instead.
+- Image prompts must avoid embedded text, letters, numbers, logos, watermarks, signage, and UI screenshots — end every prompt with "no readable text, no letters, no characters".`;
 
   const response = await ai.models.generateContent({
     model,
@@ -1090,7 +1095,7 @@ function getImageMetadataSchema(Type) {
 
 function normalizeImageMetadata(metadata, blogTitle, type, categoryLabel) {
   const label = getWordPressImageTypeLabel(type);
-  const fallbackPrompt = `Professional WordPress blog image for a Korean ${categoryLabel} article titled "${blogTitle}", clean editorial illustration, modern style, no text, no logos, no watermark.`;
+  const fallbackPrompt = `Professional illustration about ${translateCategoryForImagePrompt(categoryLabel)}, clean editorial style, modern composition, no text, no letters, no characters, no logos, no watermark, no signage.`;
 
   return {
     prompt: String(metadata?.prompt || fallbackPrompt).trim(),
@@ -1101,16 +1106,33 @@ function normalizeImageMetadata(metadata, blogTitle, type, categoryLabel) {
   };
 }
 
+const CATEGORY_IMAGE_PROMPT_TRANSLATIONS = {
+  "자바 공부": "Java programming study",
+  "IT 이야기": "IT news and technology trends",
+  "개발 이야기": "software development",
+  "SW 테스팅": "software testing and QA",
+  "주식 초보": "beginner stock investing",
+  "AI 이야기": "artificial intelligence",
+  "서버 설정": "server configuration and operations",
+  "환경 설정": "development environment setup",
+  "기존 블로그 수정": "blog content editing",
+};
+
+function translateCategoryForImagePrompt(categoryLabel) {
+  return CATEGORY_IMAGE_PROMPT_TRANSLATIONS[String(categoryLabel || "").trim()] || "technology";
+}
+
 function buildWordPressImagePrompt(prompt, type, categoryLabel) {
   const role = type === "featured"
-    ? "Create a high-impact WordPress featured image with strong composition and safe empty space for a title overlay."
-    : "Create a clean WordPress in-content illustration that supports the article section without any overlaid text.";
+    ? "High-impact blog header illustration with balanced negative space in the upper third of the frame for later composition."
+    : "Clean, fully self-contained illustration supporting an article section.";
 
   return [
+    "No text, no letters, no words, no numbers, no characters, no captions, no logos, no watermark, no signage, no UI chrome, no brand names, no code snippets, no papers, no documents, no sticky notes, no screens with visible writing, no diagrams, no flowcharts, no labeled nodes or icons, in any language or script.",
     role,
     prompt,
-    "No readable text, no captions, no logos, no watermark, no UI chrome.",
-    `Professional Korean ${categoryLabel} blog visual, polished, accessible, editorial quality.`,
+    `Professional ${translateCategoryForImagePrompt(categoryLabel)} illustration, polished, accessible, editorial quality.`,
+    "Remember: absolutely no text, letters, or characters anywhere in the image.",
   ].join(" ");
 }
 
