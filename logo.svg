@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120" role="img" aria-label="BlogMaker 로고">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#26866e"/>
+      <stop offset="100%" stop-color="#1a5c4f"/>
+    </linearGradient>
+    <linearGradient id="pencilGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#d45525"/>
+      <stop offset="100%" stop-color="#b34721"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background rounded square -->
+  <rect width="120" height="120" rx="22" fill="url(#bgGrad)"/>
+
+  <!-- Document / page -->
+  <rect x="20" y="16" width="58" height="70" rx="6" fill="rgba(255,255,255,0.18)"/>
+  <rect x="20" y="16" width="58" height="70" rx="6" fill="none" stroke="rgba(255,255,255,0.25)" stroke-width="1"/>
+
+  <!-- Blog content lines -->
+  <rect x="30" y="28" width="38" height="4" rx="2" fill="rgba(255,255,255,0.80)"/>
+  <rect x="30" y="38" width="30" height="3.5" rx="1.75" fill="rgba(255,255,255,0.55)"/>
+  <rect x="30" y="47" width="34" height="3.5" rx="1.75" fill="rgba(255,255,255,0.55)"/>
+  <rect x="30" y="56" width="26" height="3.5" rx="1.75" fill="rgba(255,255,255,0.55)"/>
+  <rect x="30" y="65" width="32" height="3.5" rx="1.75" fill="rgba(255,255,255,0.55)"/>
+
+  <!-- Pencil (rotated -45 deg, positioned at lower-right) -->
+  <g transform="translate(87,78) rotate(-45)">
+    <!-- Eraser cap -->
+    <rect x="-5.5" y="-30" width="11" height="7" rx="2" fill="#f0b8b8"/>
+    <!-- Metal ferrule -->
+    <rect x="-5.5" y="-23" width="11" height="5" fill="#d4a050"/>
+    <!-- Pencil body -->
+    <rect x="-5.5" y="-18" width="11" height="30" fill="url(#pencilGrad)"/>
+    <!-- Wood tip section -->
+    <polygon points="-5.5,12 5.5,12 0,24" fill="#f5c89a"/>
+    <!-- Graphite tip -->
+    <polygon points="-2.5,18 2.5,18 0,24" fill="#374151"/>
+  </g>
+
+  <!-- Sparkle / star accent at writing tip -->
+  <g transform="translate(72,91)">
+    <circle r="3" fill="rgba(255,255,255,0.90)"/>
+    <line x1="-5.5" y1="0" x2="5.5" y2="0" stroke="rgba(255,255,255,0.60)" stroke-width="1.2"/>
+    <line x1="0" y1="-5.5" x2="0" y2="5.5" stroke="rgba(255,255,255,0.60)" stroke-width="1.2"/>
+    <line x1="-3.9" y1="-3.9" x2="3.9" y2="3.9" stroke="rgba(255,255,255,0.40)" stroke-width="1"/>
+    <line x1="3.9" y1="-3.9" x2="-3.9" y2="3.9" stroke="rgba(255,255,255,0.40)" stroke-width="1"/>
+  </g>
+</svg>
