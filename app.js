@@ -193,6 +193,18 @@ const MENU_ITEMS = [
     ],
   },
   {
+    id: "thumbnail",
+    label: "썸네일 만들기",
+    description: "워드프레스 대표 이미지",
+    eyebrow: "Thumbnail Maker",
+    title: "썸네일 만들기",
+    sourceTitle: "블로그 제목",
+    sourceHint: "블로그 제목과 로컬 배경 템플릿을 선택해 썸네일 이미지를 만듭니다.",
+    placeholder: "예: Java Stream 객체 정렬 예제",
+    searchQuery: "",
+    tones: [],
+  },
+  {
     id: "existing-rewrite",
     label: "기존 블로그 수정",
     description: "SEO 통과용 재작성",
@@ -213,6 +225,8 @@ const MENU_ITEMS = [
 const sourceInput = document.querySelector("#sourceInput");
 const markdownOutput = document.querySelector("#markdownOutput");
 const toolList = document.querySelector("#toolList");
+const blogEditorHeader = document.querySelector("#blogEditorHeader");
+const blogInputGrid = document.querySelector("#blogInputGrid");
 const editorEyebrow = document.querySelector("#editorEyebrow");
 const editorTitle = document.querySelector("#editorTitle");
 const sourcePanelTitle = document.querySelector("#sourcePanelTitle");
@@ -239,10 +253,12 @@ const downloadButton = document.querySelector("#downloadButton");
 const seoReport = document.querySelector("#seoReport");
 const generationStatus = document.querySelector("#generationStatus");
 const toast = document.querySelector("#toast");
+const thumbnailPanel = document.querySelector("#thumbnailPanel");
+const thumbnailTitleInput = document.querySelector("#thumbnailTitleInput");
+const thumbnailTemplateSelect = document.querySelector("#thumbnailTemplateSelect");
+const thumbnailTemplateChoices = document.querySelector("#thumbnailTemplateChoices");
 const coverCanvas = document.querySelector("#coverCanvas");
 const coverStatus = document.querySelector("#coverStatus");
-const coverSourceSelect = document.querySelector("#coverSourceSelect");
-const autoCoverCheck = document.querySelector("#autoCoverCheck");
 const generateCoverButton = document.querySelector("#generateCoverButton");
 const downloadCoverButton = document.querySelector("#downloadCoverButton");
 const autoWpImagesCheck = document.querySelector("#autoWpImagesCheck");
@@ -253,6 +269,7 @@ const publishDraftButton = document.querySelector("#publishDraftButton");
 const wpImageStatus = document.querySelector("#wpImageStatus");
 const wpImageResults = document.querySelector("#wpImageResults");
 const wpPublishStatus = document.querySelector("#wpPublishStatus");
+const outputArea = document.querySelector(".output-area");
 const mediaPanel = document.querySelector(".media-panel");
 const outputGrid = document.querySelector(".output-grid");
 const outputTitle = document.querySelector(".output-toolbar h2");
@@ -260,7 +277,6 @@ const outputTitle = document.querySelector(".output-toolbar h2");
 let lastAutoKeywords = keywordInput.value.trim();
 let generationTimer = null;
 let generationStartedAt = 0;
-let ollamaImageModels = [];
 let coverImageReady = false;
 let wpImageResultsData = [];
 let currentMenuId = "java";
@@ -268,6 +284,15 @@ let selectedTopic = null;
 let activeTopicCacheKey = "";
 let activeTopicQuery = "";
 const topicCache = new Map();
+const DEFAULT_THUMBNAIL_TITLE = "블로그 제목을 입력하세요";
+const LOCAL_COVER_TEMPLATES = [
+  { id: "tech-gray", label: "테크 그레이", pattern: "network" },
+  { id: "emerald-circuit", label: "에메랄드 회로", pattern: "circuit" },
+  { id: "indigo-data", label: "인디고 데이터", pattern: "matrix" },
+  { id: "coral-flow", label: "코럴 플로우", pattern: "waves" },
+  { id: "paper-grid", label: "페이퍼 그리드", pattern: "grid" },
+  { id: "market-bars", label: "마켓 바 차트", pattern: "bars" },
+];
 
 function normalizeLineBreaks(value) {
   return String(value || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
@@ -294,6 +319,14 @@ function isExistingRewriteMode() {
   return currentMenuId === "existing-rewrite";
 }
 
+function isThumbnailMode() {
+  return currentMenuId === "thumbnail";
+}
+
+function getCoverTemplate(templateId = "") {
+  return LOCAL_COVER_TEMPLATES.find((template) => template.id === templateId) || LOCAL_COVER_TEMPLATES[0];
+}
+
 function renderMenu() {
   if (!toolList) return;
 
@@ -313,13 +346,58 @@ function setToneOptions(menu) {
     .join("");
 }
 
+function renderThumbnailTemplates() {
+  if (thumbnailTemplateSelect) {
+    thumbnailTemplateSelect.innerHTML = LOCAL_COVER_TEMPLATES
+      .map((template) => `<option value="${escapeHtml(template.id)}">${escapeHtml(template.label)}</option>`)
+      .join("");
+  }
+
+  if (thumbnailTemplateChoices) {
+    thumbnailTemplateChoices.innerHTML = LOCAL_COVER_TEMPLATES
+      .map((template) => `
+        <button class="thumbnail-template-choice" type="button" data-template-id="${escapeHtml(template.id)}">
+          <span class="template-swatch" aria-hidden="true"></span>
+          <span>${escapeHtml(template.label)}</span>
+        </button>
+      `)
+      .join("");
+  }
+
+  updateThumbnailTemplateSelection();
+}
+
+function updateThumbnailTemplateSelection() {
+  const selectedId = thumbnailTemplateSelect?.value || LOCAL_COVER_TEMPLATES[0].id;
+
+  thumbnailTemplateChoices?.querySelectorAll("[data-template-id]").forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.templateId === selectedId);
+  });
+}
+
 function applyMenu(menuId, { reset = true } = {}) {
   const nextMenu = MENU_ITEMS.find((item) => item.id === menuId) || MENU_ITEMS[0];
   currentMenuId = nextMenu.id;
   selectedTopic = null;
+  const thumbnailMode = isThumbnailMode();
 
   renderMenu();
   setToneOptions(nextMenu);
+
+  if (blogEditorHeader) blogEditorHeader.hidden = thumbnailMode;
+  if (blogInputGrid) blogInputGrid.hidden = thumbnailMode;
+  if (thumbnailPanel) thumbnailPanel.hidden = !thumbnailMode;
+  if (outputArea) outputArea.hidden = thumbnailMode;
+
+  if (thumbnailMode) {
+    topicPanel.hidden = true;
+    if (reset) {
+      clearOutputArea();
+      setCoverStatus("블로그 제목과 배경 템플릿을 선택한 뒤 썸네일을 생성하세요.");
+    }
+    thumbnailTitleInput?.focus();
+    return;
+  }
 
   editorEyebrow.textContent = nextMenu.eyebrow;
   editorTitle.textContent = nextMenu.title;
@@ -362,7 +440,7 @@ function extractGenericKeywords(value, limit = 7) {
 function syncExistingRewriteUi() {
   const existingMode = isExistingRewriteMode();
 
-  [generateCoverButton, downloadCoverButton, generateWpImagesButton, downloadWpImagesButton, copyWpMetadataButton].forEach((button) => {
+  [generateWpImagesButton, downloadWpImagesButton, copyWpMetadataButton].forEach((button) => {
     if (button) button.hidden = existingMode;
   });
 
@@ -601,6 +679,10 @@ function clearCoverImage() {
 }
 
 function extractCoverTitle() {
+  if (isThumbnailMode()) {
+    return thumbnailTitleInput?.value.trim() || "";
+  }
+
   const markdownTitle = markdownOutput.value.match(/^#\s+(.+)$/m)?.[1]?.trim();
   if (markdownTitle) return markdownTitle;
 
@@ -648,31 +730,106 @@ function drawHexagon(ctx, x, y, radius, stroke, fill) {
   ctx.stroke();
 }
 
-function drawLocalCoverBackground(ctx, title) {
-  const width = coverCanvas.width;
-  const height = coverCanvas.height;
-  const seed = hashString(title);
-  const random = createRandom(seed);
-  const gradient = ctx.createLinearGradient(0, 0, width, height);
+function drawSoftGrid(ctx, width, height, color = "rgba(255,255,255,0.16)") {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1;
 
-  gradient.addColorStop(0, "#8e9694");
-  gradient.addColorStop(0.48, "#a2a19d");
-  gradient.addColorStop(1, "#8d8b86");
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, width, height);
-
-  ctx.globalAlpha = 0.13;
-  ctx.fillStyle = "#ffffff";
-  for (let index = 0; index < 42; index += 1) {
-    const x = random() * width;
-    const y = random() * height;
-    const radius = 1 + random() * 2.2;
+  for (let x = 0; x <= width; x += 80) {
     ctx.beginPath();
-    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, height);
+    ctx.stroke();
+  }
+
+  for (let y = 0; y <= height; y += 70) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(width, y);
+    ctx.stroke();
+  }
+}
+
+function drawCircuitPattern(ctx, width, height, random) {
+  ctx.strokeStyle = "rgba(205, 255, 233, 0.34)";
+  ctx.lineWidth = 3;
+
+  for (let row = 0; row < 6; row += 1) {
+    const y = 72 + row * 92;
+    let x = 40 + random() * 80;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+
+    while (x < width - 80) {
+      x += 80 + random() * 85;
+      const nextY = y + (random() > 0.5 ? 28 : -28);
+      ctx.lineTo(x, y);
+      ctx.lineTo(x, nextY);
+    }
+
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = "rgba(255,255,255,0.42)";
+  for (let index = 0; index < 34; index += 1) {
+    ctx.beginPath();
+    ctx.arc(random() * width, random() * height, 4 + random() * 4, 0, Math.PI * 2);
     ctx.fill();
   }
-  ctx.globalAlpha = 1;
+}
 
+function drawMatrixPattern(ctx, width, height, random) {
+  ctx.fillStyle = "rgba(255,255,255,0.16)";
+  ctx.font = '700 24px "Segoe UI", sans-serif';
+  const marks = ["01", "AI", "{}", "<>", "fn", "db"];
+
+  for (let index = 0; index < 120; index += 1) {
+    ctx.globalAlpha = 0.08 + random() * 0.22;
+    ctx.fillText(marks[index % marks.length], random() * width, random() * height);
+  }
+
+  ctx.globalAlpha = 1;
+}
+
+function drawWavePattern(ctx, width, height) {
+  for (let band = 0; band < 7; band += 1) {
+    ctx.beginPath();
+    const y = 80 + band * 78;
+    ctx.moveTo(0, y);
+
+    for (let x = 0; x <= width; x += 36) {
+      const waveY = y + Math.sin(x / 80 + band * 0.7) * 28;
+      ctx.lineTo(x, waveY);
+    }
+
+    ctx.strokeStyle = `rgba(255,255,255,${0.1 + band * 0.025})`;
+    ctx.lineWidth = 10 - band * 0.7;
+    ctx.stroke();
+  }
+}
+
+function drawBarPattern(ctx, width, height, random) {
+  const baseY = height - 74;
+  const barWidth = 34;
+
+  for (let index = 0; index < 24; index += 1) {
+    const x = 42 + index * 48;
+    const barHeight = 80 + random() * 270;
+    const hue = index % 2 === 0 ? "rgba(255,255,255,0.34)" : "rgba(145, 214, 190, 0.42)";
+    ctx.fillStyle = hue;
+    ctx.fillRect(x, baseY - barHeight, barWidth, barHeight);
+  }
+
+  ctx.strokeStyle = "rgba(255,255,255,0.28)";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(38, baseY - 30);
+  for (let index = 0; index < 24; index += 1) {
+    ctx.lineTo(59 + index * 48, baseY - 110 - random() * 210);
+  }
+  ctx.stroke();
+}
+
+function drawNetworkPattern(ctx, width, height) {
   const nodes = [
     [145, 165, 44],
     [285, 105, 34],
@@ -707,10 +864,54 @@ function drawLocalCoverBackground(ctx, title) {
     ctx.textBaseline = "middle";
     ctx.fillText(["{}", "<>", "01", "AI"][index % 4], x, y);
   });
+}
+
+function drawLocalCoverBackground(ctx, title, templateId = "") {
+  const width = coverCanvas.width;
+  const height = coverCanvas.height;
+  const seed = hashString(title);
+  const random = createRandom(seed);
+  const template = getCoverTemplate(templateId);
+  const gradient = ctx.createLinearGradient(0, 0, width, height);
+
+  const gradients = {
+    "tech-gray": ["#8e9694", "#a2a19d", "#8d8b86"],
+    "emerald-circuit": ["#0f5f54", "#1e8f75", "#1c3638"],
+    "indigo-data": ["#26365f", "#5a4f9c", "#19212f"],
+    "coral-flow": ["#b84f42", "#e4a15b", "#516d70"],
+    "paper-grid": ["#e9edf0", "#f7f3e8", "#cad8d1"],
+    "market-bars": ["#213a43", "#3e6b63", "#9c6a3b"],
+  };
+  const colors = gradients[template.id] || gradients["tech-gray"];
+
+  gradient.addColorStop(0, colors[0]);
+  gradient.addColorStop(0.5, colors[1]);
+  gradient.addColorStop(1, colors[2]);
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, width, height);
+
+  ctx.globalAlpha = 0.13;
+  ctx.fillStyle = "#ffffff";
+  for (let index = 0; index < 42; index += 1) {
+    const x = random() * width;
+    const y = random() * height;
+    const radius = 1 + random() * 2.2;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  if (template.pattern === "network") drawNetworkPattern(ctx, width, height);
+  else if (template.pattern === "circuit") drawCircuitPattern(ctx, width, height, random);
+  else if (template.pattern === "matrix") drawMatrixPattern(ctx, width, height, random);
+  else if (template.pattern === "waves") drawWavePattern(ctx, width, height);
+  else if (template.pattern === "grid") drawSoftGrid(ctx, width, height, "rgba(31, 65, 69, 0.16)");
+  else if (template.pattern === "bars") drawBarPattern(ctx, width, height, random);
 
   const vignette = ctx.createRadialGradient(width / 2, height / 2, 120, width / 2, height / 2, 620);
-  vignette.addColorStop(0, "rgba(80, 82, 80, 0.1)");
-  vignette.addColorStop(1, "rgba(45, 46, 44, 0.42)");
+  vignette.addColorStop(0, template.id === "paper-grid" ? "rgba(255, 255, 255, 0.04)" : "rgba(80, 82, 80, 0.1)");
+  vignette.addColorStop(1, template.id === "paper-grid" ? "rgba(42, 55, 56, 0.24)" : "rgba(45, 46, 44, 0.42)");
   ctx.fillStyle = vignette;
   ctx.fillRect(0, 0, width, height);
 }
@@ -749,7 +950,7 @@ function splitLongToken(token, ctx, maxWidth) {
 }
 
 function wrapCanvasText(ctx, text, maxWidth, maxLines) {
-  const words = String(text || "Java Blog").split(/\s+/).filter(Boolean);
+  const words = String(text || DEFAULT_THUMBNAIL_TITLE).split(/\s+/).filter(Boolean);
   const lines = [];
   let line = "";
 
@@ -846,59 +1047,37 @@ function loadImage(src) {
   });
 }
 
-async function generateOllamaCoverBackground(title) {
-  const response = await fetch("/api/cover-background", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      title,
-      keywords: keywordInput.value.trim(),
-      categoryLabel: getCurrentMenu().label,
-      model: ollamaImageModels[0]?.name || "",
-    }),
-  });
-  const data = await response.json().catch(() => ({}));
-
-  if (!response.ok) throw new Error(data.error || `Ollama 대표이미지 배경 생성 실패: HTTP ${response.status}`);
-
-  return data.imageDataUrl;
-}
-
 async function generateCoverImage() {
-  if (isExistingRewriteMode()) return;
   if (!coverCanvas) return;
 
   const title = extractCoverTitle();
+  if (!title) {
+    showToast("썸네일에 넣을 블로그 제목을 입력해 주세요.");
+    thumbnailTitleInput?.focus();
+    return;
+  }
+
   const ctx = coverCanvas.getContext("2d");
-  const useOllama = coverSourceSelect.value === "ollama" && ollamaImageModels.length > 0;
+  const template = getCoverTemplate(thumbnailTemplateSelect?.value);
 
   generateCoverButton.disabled = true;
   downloadCoverButton.disabled = true;
   coverImageReady = false;
-  setCoverStatus(useOllama ? "Ollama로 배경 생성 중입니다..." : "무료 로컬 템플릿으로 대표이미지를 생성했습니다.");
+  setCoverStatus("무료 로컬 템플릿으로 썸네일을 생성하는 중입니다...");
 
   try {
     await ensureKoreanFontLoaded();
-
-    if (useOllama) {
-      const dataUrl = await generateOllamaCoverBackground(title);
-      const image = await loadImage(dataUrl);
-      drawCoverImageElement(ctx, image);
-      setCoverStatus(`Ollama 배경(${ollamaImageModels[0].name})에 제목을 합성했습니다.`);
-    } else {
-      drawLocalCoverBackground(ctx, title);
-    }
-
+    drawLocalCoverBackground(ctx, title, template.id);
     drawCoverTitle(ctx, title);
     coverImageReady = true;
     downloadCoverButton.disabled = false;
+    setCoverStatus(`${template.label} 템플릿으로 워드프레스용 썸네일을 만들었습니다.`);
   } catch (error) {
-    drawLocalCoverBackground(ctx, title);
+    drawLocalCoverBackground(ctx, title, LOCAL_COVER_TEMPLATES[0].id);
     drawCoverTitle(ctx, title);
     coverImageReady = true;
     downloadCoverButton.disabled = false;
-    coverSourceSelect.value = "local";
-    setCoverStatus(`${error.message || "Ollama 배경 생성에 실패했습니다."} 로컬 템플릿으로 대체했습니다.`);
+    setCoverStatus(`${error.message || "썸네일 생성에 실패했습니다."} 기본 로컬 템플릿으로 대체했습니다.`);
   } finally {
     generateCoverButton.disabled = false;
   }
@@ -906,7 +1085,7 @@ async function generateCoverImage() {
 
 function downloadCoverImage() {
   if (!coverImageReady) {
-    showToast("먼저 대표이미지를 생성해 주세요.");
+    showToast("먼저 썸네일을 생성해 주세요.");
     return;
   }
 
@@ -914,14 +1093,14 @@ function downloadCoverImage() {
   const titleSlug = extractCoverTitle()
     .replace(/[\\/:*?"<>|]/g, "")
     .replace(/\s+/g, "-")
-    .slice(0, 60) || "blog-cover";
+    .slice(0, 60) || "blog-thumbnail";
 
   link.href = coverCanvas.toDataURL("image/png");
   link.download = `${titleSlug}.png`;
   document.body.appendChild(link);
   link.click();
   link.remove();
-  showToast("대표이미지 PNG 다운로드를 시작했습니다.");
+  showToast("썸네일 PNG 다운로드를 시작했습니다.");
 }
 
 function setWpImageStatus(message, type = "") {
@@ -1443,41 +1622,6 @@ function copyTextToClipboard(text, successMessage) {
     });
 }
 
-async function loadOllamaImageModels() {
-  const ollamaOption = [...coverSourceSelect.options].find((option) => option.value === "ollama");
-
-  try {
-    const response = await fetch("/api/ollama-image-models");
-    const data = await response.json().catch(() => ({}));
-
-    if (!response.ok) throw new Error(data.error || `Ollama 이미지 모델 조회 실패: HTTP ${response.status}`);
-
-    ollamaImageModels = data.models || [];
-    if (ollamaOption) {
-      ollamaOption.disabled = ollamaImageModels.length === 0;
-      ollamaOption.textContent = ollamaImageModels.length
-        ? `Ollama 이미지 모델 (${ollamaImageModels[0].name})`
-        : "Ollama 이미지 모델 (미설치)";
-    }
-
-    if (!ollamaImageModels.length && coverSourceSelect.value === "ollama") {
-      coverSourceSelect.value = "local";
-    }
-
-    setCoverStatus(ollamaImageModels.length
-      ? "Ollama 이미지 모델을 감지했습니다. 필요하면 배경 생성 방식에서 선택할 수 있습니다."
-      : "현재 Ollama에는 이미지 생성 모델이 없어 무료 로컬 템플릿을 사용합니다.");
-  } catch (error) {
-    ollamaImageModels = [];
-    if (ollamaOption) {
-      ollamaOption.disabled = true;
-      ollamaOption.textContent = "Ollama 이미지 모델 (확인 실패)";
-    }
-    coverSourceSelect.value = "local";
-    setCoverStatus("Ollama 이미지 모델 확인에 실패해 무료 로컬 템플릿을 사용합니다.");
-  }
-}
-
 function clearOutputArea() {
   markdownOutput.value = "";
   seoReport.innerHTML = "";
@@ -1856,7 +2000,6 @@ async function generateGeneratedAssets() {
 
   const jobs = [];
 
-  if (autoCoverCheck.checked) jobs.push(generateCoverImage());
   if (autoWpImagesCheck?.checked) jobs.push(generateWordPressImages());
 
   if (jobs.length) {
@@ -2378,6 +2521,26 @@ providerSelect.addEventListener("change", updateProviderFields);
 generateButton.addEventListener("click", handleGenerateClick);
 generateCoverButton.addEventListener("click", generateCoverImage);
 downloadCoverButton.addEventListener("click", downloadCoverImage);
+thumbnailTitleInput?.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter") return;
+  event.preventDefault();
+  generateCoverImage();
+});
+thumbnailTitleInput?.addEventListener("input", () => {
+  coverImageReady = false;
+  if (downloadCoverButton) downloadCoverButton.disabled = true;
+});
+thumbnailTemplateSelect?.addEventListener("change", () => {
+  updateThumbnailTemplateSelection();
+  if (coverImageReady || thumbnailTitleInput?.value.trim()) generateCoverImage();
+});
+thumbnailTemplateChoices?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-template-id]");
+  if (!button || !thumbnailTemplateSelect) return;
+  thumbnailTemplateSelect.value = button.dataset.templateId;
+  updateThumbnailTemplateSelection();
+  if (coverImageReady || thumbnailTitleInput?.value.trim()) generateCoverImage();
+});
 generateWpImagesButton.addEventListener("click", generateWordPressImages);
 downloadWpImagesButton.addEventListener("click", downloadAllWordPressImages);
 publishDraftButton.addEventListener("click", publishWpDraft);
@@ -2411,11 +2574,10 @@ wpImageResults.addEventListener("click", (event) => {
     copyTextToClipboard(result.metadata?.[button.dataset.key] || "", "메타데이터 항목을 복사했습니다.");
   }
 });
-coverSourceSelect.addEventListener("change", generateCoverImage);
 copyButton.addEventListener("click", copyMarkdown);
 downloadButton.addEventListener("click", downloadMarkdown);
 
+renderThumbnailTemplates();
 applyMenu("java", { reset: false });
 updateProviderFields();
 clearOutputArea();
-loadOllamaImageModels().finally(clearCoverImage);
