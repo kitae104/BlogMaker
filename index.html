@@ -39,7 +39,7 @@
                 </aside>
 
                 <section class="editor">
-                    <header class="editor-header">
+                    <header id="blogEditorHeader" class="editor-header">
                         <div>
                             <p id="editorEyebrow" class="eyebrow">
                                 Java Blog Assistant
@@ -109,7 +109,7 @@
                         ></div>
                     </section>
 
-                    <div class="input-grid">
+                    <div id="blogInputGrid" class="input-grid">
                         <section class="panel">
                             <div class="panel-header">
                                 <h3 id="sourcePanelTitle">원본 입력</h3>
@@ -287,6 +287,87 @@
                             </label>
                         </section>
                     </div>
+
+                    <section
+                        id="thumbnailPanel"
+                        class="thumbnail-panel"
+                        aria-label="블로그 썸네일 만들기"
+                        hidden
+                    >
+                        <div class="thumbnail-panel-header">
+                            <div>
+                                <p class="eyebrow">Thumbnail Maker</p>
+                                <h3>블로그 썸네일 만들기</h3>
+                            </div>
+                            <div class="thumbnail-actions">
+                                <button
+                                    id="generateCoverButton"
+                                    class="primary-button"
+                                    type="button"
+                                >
+                                    썸네일 생성
+                                </button>
+                                <button
+                                    id="downloadCoverButton"
+                                    class="secondary-button"
+                                    type="button"
+                                    disabled
+                                >
+                                    PNG 다운로드
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="thumbnail-layout">
+                            <section class="thumbnail-controls-panel">
+                                <label class="field">
+                                    <span>블로그 제목</span>
+                                    <input
+                                        id="thumbnailTitleInput"
+                                        type="text"
+                                        placeholder="예: Java Stream 객체 정렬 예제"
+                                    />
+                                </label>
+
+                                <label class="field">
+                                    <span>배경 템플릿</span>
+                                    <select
+                                        id="thumbnailTemplateSelect"
+                                        aria-label="썸네일 배경 템플릿"
+                                    ></select>
+                                </label>
+
+                                <div
+                                    id="thumbnailTemplateChoices"
+                                    class="thumbnail-template-choices"
+                                    aria-label="배경 템플릿 빠른 선택"
+                                ></div>
+                            </section>
+
+                            <section
+                                class="cover-panel thumbnail-preview-panel"
+                                aria-label="썸네일 미리보기"
+                            >
+                                <div class="cover-panel-header">
+                                    <div>
+                                        <p class="eyebrow">Preview</p>
+                                        <h3>워드프레스 썸네일</h3>
+                                    </div>
+                                </div>
+                                <canvas
+                                    id="coverCanvas"
+                                    width="1200"
+                                    height="630"
+                                    aria-label="썸네일 미리보기"
+                                ></canvas>
+                                <p
+                                    id="coverStatus"
+                                    class="cover-status"
+                                    aria-live="polite"
+                                ></p>
+                            </section>
+                        </div>
+                    </section>
                 </section>
             </section>
 
@@ -297,21 +378,6 @@
                         <h2>글, 이미지, 메타데이터</h2>
                     </div>
                     <div class="toolbar-actions">
-                        <button
-                            id="generateCoverButton"
-                            class="secondary-button"
-                            type="button"
-                        >
-                            대표 이미지 생성
-                        </button>
-                        <button
-                            id="downloadCoverButton"
-                            class="secondary-button"
-                            type="button"
-                            disabled
-                        >
-                            대표 PNG
-                        </button>
                         <button
                             id="generateWpImagesButton"
                             class="secondary-button"
@@ -388,50 +454,6 @@
                         class="media-panel"
                         aria-label="생성된 이미지와 메타데이터"
                     >
-                        <section
-                            class="cover-panel"
-                            aria-label="대표 이미지 미리보기"
-                        >
-                            <div class="cover-panel-header">
-                                <div>
-                                    <p class="eyebrow">Featured Image</p>
-                                    <h3>대표 이미지</h3>
-                                </div>
-                                <div class="cover-controls">
-                                    <label class="cover-check">
-                                        <input
-                                            id="autoCoverCheck"
-                                            type="checkbox"
-                                            checked
-                                        />
-                                        <span>글 생성 후 자동 생성</span>
-                                    </label>
-                                    <select
-                                        id="coverSourceSelect"
-                                        aria-label="대표 이미지 배경 생성 방식"
-                                    >
-                                        <option value="local">
-                                            무료 로컬 템플릿
-                                        </option>
-                                        <option value="ollama">
-                                            Ollama 이미지 모델
-                                        </option>
-                                    </select>
-                                </div>
-                            </div>
-                            <canvas
-                                id="coverCanvas"
-                                width="1200"
-                                height="630"
-                                aria-label="대표 이미지 미리보기"
-                            ></canvas>
-                            <p
-                                id="coverStatus"
-                                class="cover-status"
-                                aria-live="polite"
-                            ></p>
-                        </section>
-
                         <section
                             class="wp-images-panel"
                             aria-label="워드프레스 이미지 생성 결과"
