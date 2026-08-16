@@ -1143,13 +1143,13 @@ function normalizeWpImageError(error) {
 function getWpImageTypeLabel(type) {
   if (type === "featured") return "대표 이미지";
   if (type === "content") return "본문 이미지 1";
-  return "본문 이미지 2";
+  return "본문 이미지";
 }
 
 function getWpImageFilename(type) {
   if (type === "featured") return "wp-featured.webp";
   if (type === "content") return "wp-content-1.webp";
-  return "wp-content-2.webp";
+  return "wp-image.webp";
 }
 
 function extractWpImageTitle() {
@@ -1401,7 +1401,7 @@ ${metadata.description || ""}`;
 function getWpImageTypeLabel(type) {
   if (type === "featured") return "대표 이미지";
   if (type === "content") return "본문 이미지 1";
-  return "본문 이미지 2";
+  return "본문 이미지";
 }
 
 function formatAllWpMetadata() {
@@ -2304,7 +2304,7 @@ function auditSeoMarkdown(markdown, keywordText) {
     .split(/\n{2,}/)
     .map((block) => block.trim())
     .find((block) => block && !block.startsWith("#")) || "";
-  const imageAltReady = ["featured", "content", "contentSecondary"].every((type) => {
+  const imageAltReady = ["featured", "content"].every((type) => {
     const result = getImageResult(type);
     return Boolean(result?.metadata?.altText);
   });

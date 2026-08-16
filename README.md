@@ -105,11 +105,10 @@ OLLAMA_MODEL=qwen3.6:35b-a3b
 
 ## WordPress 이미지 생성
 
-`wp-image-generator` 기능을 BlogMaker에 통합했습니다. 생성된 Markdown 글의 제목과 본문을 기반으로 Gemini가 다음 3개 이미지를 생성합니다.
+`wp-image-generator` 기능을 BlogMaker에 통합했습니다. 생성된 Markdown 글의 제목과 본문을 기반으로 Gemini가 다음 2개 이미지를 생성합니다.
 
 - 대표 이미지: 1200 x 630 WebP, 제목 오버레이 포함
-- 본문 이미지 1: 1024px 폭 WebP
-- 본문 이미지 2: 1024px 폭 WebP
+- 본문 이미지: 1024px 폭 WebP
 - 각 이미지별 WordPress 메타데이터: 대체 텍스트, 제목, 캡션, 설명
 
 `.env`에 Gemini API 키를 추가합니다.
@@ -120,11 +119,11 @@ GEMINI_PROMPT_MODEL=gemini-2.5-flash-lite
 GEMINI_IMAGE_MODEL=imagen-4.0-fast-generate-001
 ```
 
-기본값으로 `글 생성 후 자동 생성`이 켜져 있어 글 생성 버튼을 누르면 현재 생성된 글을 바탕으로 대표 이미지와 WP 이미지 3종, 이미지별 메타데이터를 함께 생성합니다. 필요하면 화면의 `WP 이미지 3종 생성` 버튼으로 다시 생성할 수 있습니다. API 키는 브라우저에 노출하지 않고 `server.js`에서만 사용합니다.
+기본값으로 `글 생성 후 자동 생성`이 켜져 있어 글 생성 버튼을 누르면 현재 생성된 글을 바탕으로 대표 이미지와 본문 이미지, 이미지별 메타데이터를 함께 생성합니다. 필요하면 화면의 `WP 이미지 2종 생성` 버튼으로 다시 생성할 수 있습니다. API 키는 브라우저에 노출하지 않고 `server.js`에서만 사용합니다.
 
 ## WordPress 임시글 직접 발행
 
-생성된 Markdown, WordPress 이미지 3종, 이미지 메타데이터, 카테고리, 태그를 WordPress REST API로 업로드해 `draft` 상태의 임시글을 만들 수 있습니다.
+생성된 Markdown, WordPress 이미지 2종, 이미지 메타데이터, 카테고리, 태그를 WordPress REST API로 업로드해 `draft` 상태의 임시글을 만들 수 있습니다.
 
 `.env`에 WordPress 접속 정보를 추가합니다.
 
@@ -140,8 +139,7 @@ WP_APP_PASSWORD=your-wordpress-application-password
 
 - `WP 임시글 발행` 버튼은 항상 `draft` 상태로만 글을 생성합니다.
 - 대표 이미지는 WordPress 미디어로 업로드한 뒤 글의 대표 이미지로 지정합니다.
-- 본문 이미지 1은 제목 아래 설명 문단 뒤에 삽입합니다.
-- 본문 이미지 2는 `마무리 정리` 섹션 바로 위에 삽입합니다.
+- 본문 이미지는 제목 아래 설명 문단 뒤에 삽입합니다.
 - 이미지별 대체 텍스트, 제목, 캡션, 설명은 WordPress 미디어 메타데이터로 반영합니다.
 - 카테고리와 태그는 기존 항목이 있으면 재사용하고, 없으면 새로 생성합니다.
 
@@ -176,7 +174,7 @@ Java 소스 코드
 - Java Stream, `sorted()`, `Comparator`, 메서드 참조 설명
 - 코드 오류가 있을 때 수정 제안 요청
 - 로컬/Ollama 대표 이미지 생성
-- Gemini 기반 WordPress 이미지 3종 생성 및 WebP 최적화
+- Gemini 기반 WordPress 이미지 2종 생성 및 WebP 최적화
 - WordPress 이미지 메타데이터 생성 및 복사
 - WordPress REST API 기반 임시글 직접 발행
 - 대표 이미지와 본문 이미지 자동 업로드 및 본문 배치

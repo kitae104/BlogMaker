@@ -385,7 +385,6 @@ async function handleWordPressImages(req, res) {
     const specs = [
       { type: "featured", aspectRatio: "16:9", width: 1200, height: 630, overlayTitle: title },
       { type: "content", aspectRatio: "16:9", width: 1024, height: null, overlayTitle: "" },
-      { type: "contentSecondary", aspectRatio: "16:9", width: 1024, height: null, overlayTitle: "" },
     ];
     const images = [];
 
@@ -730,7 +729,7 @@ function sanitizeFilename(filename, mimeType) {
 function getDefaultWordPressImageFilename(type) {
   if (type === "featured") return "wp-featured.webp";
   if (type === "content") return "wp-content-1.webp";
-  return "wp-content-2.webp";
+  return "wp-image.webp";
 }
 
 async function ensureWordPressTerm(config, taxonomy, name) {
@@ -750,17 +749,14 @@ async function ensureWordPressTerm(config, taxonomy, name) {
 
 function buildWordPressDraftContent(markdown, uploadedImages) {
   const contentImage = uploadedImages.find((image) => image.type === "content");
-  const summaryImage = uploadedImages.find((image) => image.type === "contentSecondary");
   let content = stripWordPressImagePrompt(markdown).trim();
 
   content = insertMarkdownAfterIntro(content, "\n\n{{WP_CONTENT_IMAGE_1}}\n\n");
-  content = insertMarkdownBeforeWrapUp(content, "\n\n{{WP_CONTENT_IMAGE_2}}\n\n");
   content = stripFirstMarkdownHeading(content);
   content = markdownToWordPressHtml(content);
 
   return content
     .replace("{{WP_CONTENT_IMAGE_1}}", buildWordPressImageHtml(contentImage))
-    .replace("{{WP_CONTENT_IMAGE_2}}", buildWordPressImageHtml(summaryImage))
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
@@ -1013,10 +1009,9 @@ async function loadGoogleGenAI() {
 
 async function generateWordPressImageMetadata(ai, Type, model, title, content, categoryLabel) {
   const prompt = `You are an expert WordPress blog image creator.
-Based on the following blog title and content, generate image generation prompts and metadata for 3 images:
-1. Featured Image (대표 이미지)
-2. Content Image 1 (본문 이미지 1)
-3. Content Image 2 (본문 이미지 2)
+Based on the following blog title and content, generate image generation prompts and metadata for 2 images:
+1. Featured Image (대표 이미지): a visually rich header background. The app will overlay the blog title later, so the generated image itself must contain no text.
+2. Content Image (본문 이미지): one relevant supporting image for the article body. It must be useful on its own and contain no text.
 
 Blog Title: ${title}
 Blog Category: ${categoryLabel}
@@ -1038,13 +1033,6 @@ Return the result as a JSON object with the following structure:
     "title": "제목 (Korean)",
     "caption": "캡션 (Korean)",
     "description": "설명 (Korean)"
-  },
-  "contentSecondary": {
-    "prompt": "Image generation prompt in English...",
-    "altText": "대체 텍스트 (Korean)",
-    "title": "제목 (Korean)",
-    "caption": "캡션 (Korean)",
-    "description": "설명 (Korean)"
   }
 }
 
@@ -1053,11 +1041,14 @@ Metadata writing rules:
 - Keep each image metadata distinct and context-aware.
 - Make alt text and description clear for accessibility and SEO.
 - Image prompts must be written entirely in English.
+- Featured image prompts must describe an image-forward background with strong visual objects, scene, lighting, texture, and composition. Do not ask the image model to render the title; the app overlays the title separately.
+- Content image prompts must describe only one central visual idea that directly supports the blog content.
 - Image prompts must NOT include the blog title, any Korean words, or any quoted text to render inside the image.
 - Image prompts must NOT mention brand or product names (e.g. "WordPress"), UI elements, or phrases like "title", "caption", or "label" — image models tend to render such words as garbled on-image text.
 - Image prompts must NOT describe code snippets, screens, monitors, papers, books, signs, or any other object with visible writing on it — image models render such writing as garbled, illegible characters. Use abstract shapes, icons, or objects instead to represent those ideas.
 - Image prompts must NOT describe diagrams, flowcharts, node/network graphs, UI mockups, wireframes, dashboards, or icons labeled with specific concept names (e.g. do not write "icon representing filter, map, reduce" or "nodes labeled with each step") — these layouts strongly trigger fake garbled text labels even when told not to render text. Prefer purely abstract gradients, geometric shapes, light/motion trails, metaphorical objects, or photorealistic scenes with no labeled parts instead.
-- Image prompts must avoid embedded text, letters, numbers, logos, watermarks, signage, and UI screenshots — end every prompt with "no readable text, no letters, no characters".`;
+- Image prompts must avoid embedded text, letters, numbers, logos, watermarks, signage, and UI screenshots. Avoid any text-like glyphs, pseudo-writing, keyboard legends, equations, labels, chart numbers, or decorative symbols.
+- End every image prompt with this exact phrase: "no readable text, no letters, no numbers, no characters, no typography, no logos, no watermark".`;
 
   const response = await ai.models.generateContent({
     model,
@@ -1069,9 +1060,8 @@ Metadata writing rules:
         properties: {
           featured: getImageMetadataSchema(Type),
           content: getImageMetadataSchema(Type),
-          contentSecondary: getImageMetadataSchema(Type),
         },
-        required: ["featured", "content", "contentSecondary"],
+        required: ["featured", "content"],
       },
     },
   });
@@ -1124,22 +1114,23 @@ function translateCategoryForImagePrompt(categoryLabel) {
 
 function buildWordPressImagePrompt(prompt, type, categoryLabel) {
   const role = type === "featured"
-    ? "High-impact blog header illustration with balanced negative space in the upper third of the frame for later composition."
-    : "Clean, fully self-contained illustration supporting an article section.";
+    ? "High-impact image-rich blog header background. Leave clean visual breathing room near the center for a title overlay that will be added later by the app. Do not render the title or any text."
+    : "One clean, fully self-contained supporting image that directly matches the article topic and helps readers understand the content.";
 
   return [
-    "No text, no letters, no words, no numbers, no characters, no captions, no logos, no watermark, no signage, no UI chrome, no brand names, no code snippets, no papers, no documents, no sticky notes, no screens with visible writing, no diagrams, no flowcharts, no labeled nodes or icons, in any language or script.",
+    "No text, no letters, no words, no numbers, no characters, no typography, no pseudo-writing, no captions, no logos, no watermark, no signage, no UI chrome, no brand names, no code snippets, no papers, no documents, no sticky notes, no screens with visible writing, no diagrams, no flowcharts, no charts with numbers, no labeled nodes or icons, in any language or script.",
     role,
     prompt,
     `Professional ${translateCategoryForImagePrompt(categoryLabel)} illustration, polished, accessible, editorial quality.`,
-    "Remember: absolutely no text, letters, or characters anywhere in the image.",
+    "Use natural objects, abstract shapes, lighting, depth, and scene composition instead of written elements.",
+    "Remember: absolutely no readable text, letters, numbers, characters, or text-like marks anywhere in the image.",
   ].join(" ");
 }
 
 function getWordPressImageTypeLabel(type) {
   if (type === "featured") return "대표 이미지";
   if (type === "content") return "본문 이미지 1";
-  return "본문 이미지 2";
+  return "본문 이미지";
 }
 
 function parseJsonObject(value) {
