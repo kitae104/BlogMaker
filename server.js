@@ -4,6 +4,9 @@ const path = require("node:path");
 
 const rootDir = __dirname;
 const DEFAULT_GEMINI_IMAGE_MODEL = "gemini-3.1-flash-image";
+const DEPRECATED_GEMINI_IMAGE_MODELS = new Set([
+  "imagen-4.0-fast-generate-001",
+]);
 
 loadDotEnv(path.join(rootDir, ".env"));
 
@@ -379,7 +382,7 @@ async function handleWordPressImages(req, res) {
 
   const ai = new GoogleGenAI({ apiKey });
   const promptModel = String(body.promptModel || process.env.GEMINI_PROMPT_MODEL || "gemini-2.5-flash-lite").trim();
-  const imageModel = normalizeGoogleModelName(body.imageModel || process.env.GEMINI_IMAGE_MODEL || DEFAULT_GEMINI_IMAGE_MODEL);
+  const imageModel = resolveGoogleImageModel(body.imageModel || process.env.GEMINI_IMAGE_MODEL || DEFAULT_GEMINI_IMAGE_MODEL);
 
   try {
     const metadata = await generateWordPressImageMetadata(ai, Type, promptModel, title, content, categoryLabel);
@@ -482,6 +485,13 @@ function extractInteractionImage(interaction) {
 
 function normalizeGoogleModelName(model) {
   return String(model || "").trim().replace(/^models\//, "");
+}
+
+function resolveGoogleImageModel(model) {
+  const normalized = normalizeGoogleModelName(model);
+  return DEPRECATED_GEMINI_IMAGE_MODELS.has(normalized)
+    ? DEFAULT_GEMINI_IMAGE_MODEL
+    : normalized;
 }
 
 function isGeminiImageModel(model) {
