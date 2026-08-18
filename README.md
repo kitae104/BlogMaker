@@ -116,7 +116,7 @@ OLLAMA_MODEL=qwen3.6:35b-a3b
 ```text
 GEMINI_API_KEY=your-gemini-api-key
 GEMINI_PROMPT_MODEL=gemini-2.5-flash-lite
-GEMINI_IMAGE_MODEL=imagen-4.0-fast-generate-001
+GEMINI_IMAGE_MODEL=gemini-3.1-flash-image
 ```
 
 기본값으로 `글 생성 후 자동 생성`이 켜져 있어 글 생성 버튼을 누르면 현재 생성된 글을 바탕으로 대표 이미지와 본문 이미지, 이미지별 메타데이터를 함께 생성합니다. 필요하면 화면의 `WP 이미지 2종 생성` 버튼으로 다시 생성할 수 있습니다. API 키는 브라우저에 노출하지 않고 `server.js`에서만 사용합니다.

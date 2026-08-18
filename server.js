@@ -3,6 +3,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const rootDir = __dirname;
+const DEFAULT_GEMINI_IMAGE_MODEL = "gemini-3.1-flash-image";
 
 loadDotEnv(path.join(rootDir, ".env"));
 
@@ -378,7 +379,7 @@ async function handleWordPressImages(req, res) {
 
   const ai = new GoogleGenAI({ apiKey });
   const promptModel = String(body.promptModel || process.env.GEMINI_PROMPT_MODEL || "gemini-2.5-flash-lite").trim();
-  const imageModel = String(body.imageModel || process.env.GEMINI_IMAGE_MODEL || "imagen-4.0-fast-generate-001").trim();
+  const imageModel = normalizeGoogleModelName(body.imageModel || process.env.GEMINI_IMAGE_MODEL || DEFAULT_GEMINI_IMAGE_MODEL);
 
   try {
     const metadata = await generateWordPressImageMetadata(ai, Type, promptModel, title, content, categoryLabel);
@@ -390,18 +391,14 @@ async function handleWordPressImages(req, res) {
 
     for (const spec of specs) {
       const itemMetadata = normalizeImageMetadata(metadata[spec.type], title, spec.type, categoryLabel);
-      const imageResponse = await ai.models.generateImages({
-        model: imageModel,
-        prompt: buildWordPressImagePrompt(itemMetadata.prompt, spec.type, categoryLabel),
-        config: {
-          numberOfImages: 1,
-          aspectRatio: spec.aspectRatio,
-          outputMimeType: "image/png",
-        },
-      });
-      const firstImage = imageResponse.generatedImages?.[0]?.image;
-      const base64Data = firstImage?.imageBytes || "";
-      const mimeType = firstImage?.mimeType || "image/png";
+      const generatedImage = await generateWordPressImage(
+        ai,
+        imageModel,
+        buildWordPressImagePrompt(itemMetadata.prompt, spec.type, categoryLabel),
+        spec.aspectRatio
+      );
+      const base64Data = generatedImage.base64Data || "";
+      const mimeType = generatedImage.mimeType || "image/png";
 
       if (!base64Data) {
         throw new Error(`${getWordPressImageTypeLabel(spec.type)} 생성 결과에서 이미지 데이터를 찾지 못했습니다.`);
@@ -422,6 +419,74 @@ async function handleWordPressImages(req, res) {
     const normalized = normalizeGoogleApiError(error);
     sendJson(res, normalized.statusCode, { error: normalized.message });
   }
+}
+
+async function generateWordPressImage(ai, model, prompt, aspectRatio) {
+  if (isGeminiImageModel(model)) {
+    const interaction = await ai.interactions.create({
+      model,
+      input: prompt,
+      response_modalities: ["image"],
+      response_format: {
+        type: "image",
+        mime_type: "image/png",
+        aspect_ratio: aspectRatio,
+        image_size: "1K",
+      },
+      generation_config: {
+        image_config: {
+          aspect_ratio: aspectRatio,
+          image_size: "1K",
+        },
+      },
+    });
+
+    return extractInteractionImage(interaction);
+  }
+
+  const imageResponse = await ai.models.generateImages({
+    model,
+    prompt,
+    config: {
+      numberOfImages: 1,
+      aspectRatio,
+      outputMimeType: "image/png",
+    },
+  });
+  const firstImage = imageResponse.generatedImages?.[0]?.image;
+
+  return {
+    base64Data: firstImage?.imageBytes || "",
+    mimeType: firstImage?.mimeType || "image/png",
+  };
+}
+
+function extractInteractionImage(interaction) {
+  const outputImage = interaction?.output_image;
+  if (outputImage?.data) {
+    return {
+      base64Data: outputImage.data,
+      mimeType: outputImage.mime_type || outputImage.mimeType || "image/png",
+    };
+  }
+
+  const imageOutput = Array.isArray(interaction?.outputs)
+    ? interaction.outputs.find((output) => output?.type === "image" && output.data)
+    : null;
+
+  return {
+    base64Data: imageOutput?.data || "",
+    mimeType: imageOutput?.mime_type || imageOutput?.mimeType || "image/png",
+  };
+}
+
+function normalizeGoogleModelName(model) {
+  return String(model || "").trim().replace(/^models\//, "");
+}
+
+function isGeminiImageModel(model) {
+  const normalized = normalizeGoogleModelName(model).toLowerCase();
+  return normalized.startsWith("gemini-") && normalized.includes("image");
 }
 
 async function handleWordPressDraft(req, res) {
