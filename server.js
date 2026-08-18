@@ -4,6 +4,7 @@ const path = require("node:path");
 
 const rootDir = __dirname;
 const DEFAULT_GEMINI_IMAGE_MODEL = "gemini-3.1-flash-image";
+const GEMINI_INTERACTION_IMAGE_MIME_TYPE = "image/jpeg";
 const DEPRECATED_GEMINI_IMAGE_MODELS = new Set([
   "imagen-4.0-fast-generate-001",
 ]);
@@ -432,7 +433,7 @@ async function generateWordPressImage(ai, model, prompt, aspectRatio) {
       response_modalities: ["image"],
       response_format: {
         type: "image",
-        mime_type: "image/png",
+        mime_type: GEMINI_INTERACTION_IMAGE_MIME_TYPE,
         aspect_ratio: aspectRatio,
         image_size: "1K",
       },
@@ -469,7 +470,7 @@ function extractInteractionImage(interaction) {
   if (outputImage?.data) {
     return {
       base64Data: outputImage.data,
-      mimeType: outputImage.mime_type || outputImage.mimeType || "image/png",
+      mimeType: outputImage.mime_type || outputImage.mimeType || GEMINI_INTERACTION_IMAGE_MIME_TYPE,
     };
   }
 
@@ -479,7 +480,7 @@ function extractInteractionImage(interaction) {
 
   return {
     base64Data: imageOutput?.data || "",
-    mimeType: imageOutput?.mime_type || imageOutput?.mimeType || "image/png",
+    mimeType: imageOutput?.mime_type || imageOutput?.mimeType || GEMINI_INTERACTION_IMAGE_MIME_TYPE,
   };
 }
 
